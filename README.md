@@ -30,7 +30,7 @@ Color changes based on usage:
 ### Quick Install
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/claude-pulse.git
+git clone https://github.com/omriariav/claude-pulse.git
 cd claude-pulse
 ./install.sh
 ```
