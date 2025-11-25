@@ -44,4 +44,4 @@ echo '   "statusLineCommand": "~/.claude/statusline-command.sh"'
 echo ""
 echo "2. Restart Claude Code to see your token usage in the status line!"
 echo ""
-echo "📖 For more info, see: https://github.com/YOUR_USERNAME/claude-pulse"
+echo "📖 For more info, see: https://github.com/omriariav/claude-pulse"
