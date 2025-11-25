@@ -22,6 +22,9 @@
 📁 /Users/you/Code/your-project
 ```
 
+**First line**: Token usage (current/limit) and percentage
+**Second line**: Current working directory where Claude Code was executed
+
 Color changes based on usage:
 - 🟢 **Green** (0-49%): Plenty of context remaining
 - 🟡 **Yellow** (50-79%): Moderate usage
@@ -119,6 +122,16 @@ The difference between claude-pulse and `/context` is typically <3% (negligible)
 **Token count seems off**
 - claude-pulse reads from transcript files, which update after each API response
 - Small differences (<3%) from `/context` are normal due to timing
+
+## Known Issues
+
+**~3% difference from /context**
+- claude-pulse uses actual API billing data (what Anthropic charges)
+- `/context` uses Claude Code's estimation
+- Difference is typically 2-3k tokens on a 70k total (~3%)
+- This is due to timing (when snapshots are taken) and minor calculation differences
+- For practical purposes, the difference is negligible
+- If you need exact `/context` numbers, that tool remains available
 
 ## Credits
 
