@@ -4,6 +4,8 @@
 
 **claude-pulse** displays your current Claude Code token usage directly in your status line, helping you stay aware of context consumption without running `/context` manually.
 
+![claude-pulse in action](screenshot.png)
+
 ## Features
 
 - ✅ **Accurate token counting** - Reads actual usage from Claude's API responses
