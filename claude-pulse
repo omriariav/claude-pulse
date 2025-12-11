@@ -1,60 +1,70 @@
 #!/bin/bash
-# ccusage-inspired statusline for Claude Code
-# Based on: https://github.com/ryoppippi/ccusage
+# claude-pulse v1.1: Real-time token usage for Claude Code status line
+# Now uses native context_window data (Claude Code v2.0.65+)
+# Falls back to transcript parsing for older versions
 
 # Read JSON input from stdin
 input=$(cat)
 
 # Extract values from JSON
-transcript_path=$(echo "$input" | jq -r '.transcript_path')
 cwd=$(echo "$input" | jq -r '.cwd')
-session_id=$(echo "$input" | jq -r '.session_id')
-model_id=$(echo "$input" | jq -r '.model.id // "claude-sonnet-4-5-20250929"')
 
-# Check if transcript file exists
-if [[ ! -f "$transcript_path" ]]; then
-    printf "🧠 Transcript not found\n📁 ${cwd}"
-    exit 0
+# Try native context_window data first (Claude Code v2.0.65+)
+input_tokens=$(echo "$input" | jq -r '.context_window.total_input_tokens // null')
+output_tokens=$(echo "$input" | jq -r '.context_window.total_output_tokens // null')
+context_limit=$(echo "$input" | jq -r '.context_window.context_window_size // null')
+
+# If native data available, use it
+if [[ "$input_tokens" != "null" ]] && [[ -n "$input_tokens" ]]; then
+    # Native mode: total tokens = input + output
+    input_tokens=$((input_tokens + output_tokens))
+else
+    # Fallback: Parse transcript files (for Claude Code < v2.0.65)
+    transcript_path=$(echo "$input" | jq -r '.transcript_path')
+    session_id=$(echo "$input" | jq -r '.session_id')
+    model_id=$(echo "$input" | jq -r '.model.id // "claude-sonnet-4-5-20250929"')
+
+    # Check if transcript file exists
+    if [[ ! -f "$transcript_path" ]]; then
+        printf "🧠 Transcript not found\n📁 ${cwd}"
+        exit 0
+    fi
+
+    # Parse transcript JSONL from bottom-up to find last assistant message with usage data
+    input_tokens=$(tail -r "$transcript_path" 2>/dev/null | jq --arg sid "$session_id" -s '
+        map(select(.sessionId == $sid and .message.usage)) |
+        if length > 0 then
+            .[0].message.usage |
+            ((.input_tokens // 0) +
+             (.cache_creation_input_tokens // 0) +
+             (.cache_read_input_tokens // 0))
+        else
+            null
+        end
+    ' 2>/dev/null)
+
+    # Determine context limit based on model ID
+    case "$model_id" in
+        claude-opus-4*|claude-sonnet-4*|claude-sonnet-3-7*|claude-3-7-sonnet*)
+            context_limit=200000
+            ;;
+        claude-haiku-3-5*|claude-3-5-haiku*)
+            context_limit=200000
+            ;;
+        claude-opus-3*|claude-sonnet-3-5*|claude-3-5-sonnet*|claude-3-opus*)
+            context_limit=200000
+            ;;
+        *)
+            context_limit=200000
+            ;;
+    esac
 fi
-
-# Parse transcript JSONL from bottom-up to find last assistant message with usage data
-# This matches ccusage's approach: reverse iteration to get most recent token count
-# Note: Using tail -r for macOS compatibility (tac not available)
-input_tokens=$(tail -r "$transcript_path" 2>/dev/null | jq --arg sid "$session_id" -s '
-    map(select(.sessionId == $sid and .message.usage)) |
-    if length > 0 then
-        .[0].message.usage |
-        ((.input_tokens // 0) +
-         (.cache_creation_input_tokens // 0) +
-         (.cache_read_input_tokens // 0))
-    else
-        null
-    end
-' 2>/dev/null)
 
 # If no usage data found yet
 if [[ -z "$input_tokens" ]] || [[ "$input_tokens" == "null" ]]; then
     printf "🧠 No token usage yet\n📁 ${cwd}"
     exit 0
 fi
-
-# Determine context limit based on model ID
-# ccusage queries pricing API, we hardcode known Claude models
-case "$model_id" in
-    claude-opus-4*|claude-sonnet-4*|claude-sonnet-3-7*|claude-3-7-sonnet*)
-        context_limit=200000
-        ;;
-    claude-haiku-3-5*|claude-3-5-haiku*)
-        context_limit=200000
-        ;;
-    claude-opus-3*|claude-sonnet-3-5*|claude-3-5-sonnet*|claude-3-opus*)
-        context_limit=200000
-        ;;
-    *)
-        # Default to 200k for unknown models
-        context_limit=200000
-        ;;
-esac
 
 # Calculate percentage
 percent=$(awk "BEGIN {printf \"%.0f\", ($input_tokens/$context_limit)*100}")

@@ -1,8 +1,14 @@
 # claude-pulse
 
-> Real-time token usage monitoring for Claude Code status line
+> Real-time token usage monitoring for Claude Code status line | **v1.1**
 
 **claude-pulse** displays your current Claude Code token usage directly in your status line, helping you stay aware of context consumption without running `/context` manually.
+
+## New in v1.1: Native Support
+
+**Claude Code v2.0.65+** now provides context window data natively! claude-pulse automatically uses the native `context_window` data when available, falling back to transcript parsing for older versions.
+
+See [RELEASE.md](RELEASE.md) for full release notes.
 
 ![claude-pulse in action](screenshot.png)
 
@@ -66,7 +72,25 @@ cd claude-pulse
 
 ## How It Works
 
-claude-pulse reads token usage data from Claude Code's transcript files (JSONL format). Each time Claude's API responds, it includes a `usage` object with:
+### Native Mode (Claude Code v2.0.65+)
+
+Claude Code now provides context window data directly in the status line JSON input:
+
+```json
+{
+  "context_window": {
+    "total_input_tokens": 15234,
+    "total_output_tokens": 4521,
+    "context_window_size": 200000
+  }
+}
+```
+
+The script simply reads this data - no file parsing needed!
+
+### Legacy Mode (Claude Code < v2.0.65)
+
+For older versions, claude-pulse falls back to reading token usage from Claude Code's transcript files (JSONL format). Each API response includes a `usage` object:
 
 ```json
 {
@@ -78,13 +102,10 @@ claude-pulse reads token usage data from Claude Code's transcript files (JSONL f
 ```
 
 The script:
-1. Reads the latest API response from the transcript
-2. Sums all **input token types** (input + cache_creation + cache_read)
-3. Excludes output tokens (they don't count toward context limit)
-4. Calculates percentage based on the model's context window
-5. Returns a compact, color-coded status line
-
-This is the **actual billing data** from Anthropic's API, not an estimation.
+1. Checks for native `context_window` data first
+2. Falls back to transcript parsing if not available
+3. Calculates percentage based on the context window size
+4. Returns a compact, color-coded status line
 
 ## Supported Models
 
@@ -102,11 +123,11 @@ The script automatically detects your model and sets the appropriate context lim
 
 You can! But claude-pulse offers:
 - **Always visible** - No need to run `/context` manually
-- **API accuracy** - Uses actual billing data from Claude
-- **Lightweight** - No parsing of command output needed
+- **Native accuracy** - Uses Claude Code's own context window data (v2.0.65+)
+- **Lightweight** - Simple JSON parsing, no file I/O in native mode
 - **Automatic** - Updates with every message
 
-The difference between claude-pulse and `/context` is typically <3% (negligible).
+With native mode (v2.0.65+), claude-pulse uses the exact same data source as `/context`.
 
 ## Troubleshooting
 
@@ -125,13 +146,11 @@ The difference between claude-pulse and `/context` is typically <3% (negligible)
 
 ## Known Issues
 
-**~3% difference from /context**
-- claude-pulse uses actual API billing data (what Anthropic charges)
+**~3% difference from /context (Legacy mode only)**
+- In legacy mode (< v2.0.65), claude-pulse uses API billing data from transcripts
 - `/context` uses Claude Code's estimation
 - Difference is typically 2-3k tokens on a 70k total (~3%)
-- This is due to timing (when snapshots are taken) and minor calculation differences
-- For practical purposes, the difference is negligible
-- If you need exact `/context` numbers, that tool remains available
+- **Native mode (v2.0.65+)**: No difference - uses the same data source as `/context`
 
 ## Credits
 
