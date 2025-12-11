@@ -1,36 +1,35 @@
 #!/bin/bash
-# claude-pulse v1.1: Real-time token usage for Claude Code status line
-# Now uses native context_window data (Claude Code v2.0.65+)
-# Falls back to transcript parsing for older versions
+# claude-pulse v1.2: Real-time token usage for Claude Code status line
+# Prefers transcript parsing (billing API) for accuracy
+# Falls back to native context_window if transcript unavailable
 
 # Read JSON input from stdin
 input=$(cat)
 
 # Extract values from JSON
 cwd=$(echo "$input" | jq -r '.cwd')
+transcript_path=$(echo "$input" | jq -r '.transcript_path')
+session_id=$(echo "$input" | jq -r '.session_id')
+model_id=$(echo "$input" | jq -r '.model.id // "claude-sonnet-4-5-20250929"')
 
-# Try native context_window data first (Claude Code v2.0.65+)
-input_tokens=$(echo "$input" | jq -r '.context_window.total_input_tokens // null')
-output_tokens=$(echo "$input" | jq -r '.context_window.total_output_tokens // null')
-context_limit=$(echo "$input" | jq -r '.context_window.context_window_size // null')
+# Determine context limit based on model ID
+case "$model_id" in
+    claude-opus-4*|claude-sonnet-4*|claude-sonnet-3-7*|claude-3-7-sonnet*)
+        context_limit=200000
+        ;;
+    claude-haiku-3-5*|claude-3-5-haiku*)
+        context_limit=200000
+        ;;
+    claude-opus-3*|claude-sonnet-3-5*|claude-3-5-sonnet*|claude-3-opus*)
+        context_limit=200000
+        ;;
+    *)
+        context_limit=200000
+        ;;
+esac
 
-# If native data available, use it
-if [[ "$input_tokens" != "null" ]] && [[ -n "$input_tokens" ]]; then
-    # Native mode: total tokens = input + output
-    input_tokens=$((input_tokens + output_tokens))
-else
-    # Fallback: Parse transcript files (for Claude Code < v2.0.65)
-    transcript_path=$(echo "$input" | jq -r '.transcript_path')
-    session_id=$(echo "$input" | jq -r '.session_id')
-    model_id=$(echo "$input" | jq -r '.model.id // "claude-sonnet-4-5-20250929"')
-
-    # Check if transcript file exists
-    if [[ ! -f "$transcript_path" ]]; then
-        printf "🧠 Transcript not found\n📁 ${cwd}"
-        exit 0
-    fi
-
-    # Parse transcript JSONL from bottom-up to find last assistant message with usage data
+# Primary: Parse transcript files (billing API - more accurate)
+if [[ -f "$transcript_path" ]]; then
     input_tokens=$(tail -r "$transcript_path" 2>/dev/null | jq --arg sid "$session_id" -s '
         map(select(.sessionId == $sid and .message.usage)) |
         if length > 0 then
@@ -42,26 +41,28 @@ else
             null
         end
     ' 2>/dev/null)
-
-    # Determine context limit based on model ID
-    case "$model_id" in
-        claude-opus-4*|claude-sonnet-4*|claude-sonnet-3-7*|claude-3-7-sonnet*)
-            context_limit=200000
-            ;;
-        claude-haiku-3-5*|claude-3-5-haiku*)
-            context_limit=200000
-            ;;
-        claude-opus-3*|claude-sonnet-3-5*|claude-3-5-sonnet*|claude-3-opus*)
-            context_limit=200000
-            ;;
-        *)
-            context_limit=200000
-            ;;
-    esac
 fi
 
-# If no usage data found yet
+# Fallback: native context_window data (may underreport)
 if [[ -z "$input_tokens" ]] || [[ "$input_tokens" == "null" ]]; then
+    native_input=$(echo "$input" | jq -r '.context_window.total_input_tokens // null')
+    native_output=$(echo "$input" | jq -r '.context_window.total_output_tokens // null')
+    native_limit=$(echo "$input" | jq -r '.context_window.context_window_size // null')
+
+    if [[ "$native_input" != "null" ]] && [[ -n "$native_input" ]]; then
+        input_tokens=$((native_input + native_output))
+        if [[ "$native_limit" != "null" ]] && [[ -n "$native_limit" ]]; then
+            context_limit="$native_limit"
+        fi
+    fi
+fi
+
+# If still no data, check if transcript exists but has no usage yet
+if [[ -z "$input_tokens" ]] || [[ "$input_tokens" == "null" ]]; then
+    if [[ ! -f "$transcript_path" ]]; then
+        printf "🧠 Transcript not found\n📁 ${cwd}"
+        exit 0
+    fi
     printf "🧠 No token usage yet\n📁 ${cwd}"
     exit 0
 fi
