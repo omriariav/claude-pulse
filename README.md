@@ -1,12 +1,12 @@
 # claude-pulse
 
-> Real-time token usage monitoring for Claude Code status line | **v1.1**
+> Real-time token usage monitoring for Claude Code status line | **v1.2**
 
 **claude-pulse** displays your current Claude Code token usage directly in your status line, helping you stay aware of context consumption without running `/context` manually.
 
-## New in v1.1: Native Support
+## New in v1.2: Accurate Billing API
 
-**Claude Code v2.0.65+** now provides context window data natively! claude-pulse automatically uses the native `context_window` data when available, falling back to transcript parsing for older versions.
+**v1.2** prioritizes the billing API from transcript files for more accurate token counts. Native `context_window` data (v1.1) was found to underreport actual usage (~60% shown when context was actually full). Transcript parsing now takes priority, with native mode as fallback.
 
 See [RELEASE.md](RELEASE.md) for full release notes.
 
@@ -72,9 +72,24 @@ cd claude-pulse
 
 ## How It Works
 
-### Native Mode (Claude Code v2.0.65+)
+### Primary: Transcript Billing API
 
-Claude Code now provides context window data directly in the status line JSON input:
+claude-pulse reads token usage from Claude Code's transcript files (JSONL format). Each API response includes a `usage` object with billing data:
+
+```json
+{
+  "input_tokens": 10,
+  "cache_creation_input_tokens": 45048,
+  "cache_read_input_tokens": 27423,
+  "output_tokens": 313
+}
+```
+
+This method provides accurate token counts that match actual context consumption.
+
+### Fallback: Native Mode (Claude Code v2.0.65+)
+
+If transcript parsing fails, claude-pulse falls back to native `context_window` data:
 
 ```json
 {
@@ -86,24 +101,11 @@ Claude Code now provides context window data directly in the status line JSON in
 }
 ```
 
-The script simply reads this data - no file parsing needed!
-
-### Legacy Mode (Claude Code < v2.0.65)
-
-For older versions, claude-pulse falls back to reading token usage from Claude Code's transcript files (JSONL format). Each API response includes a `usage` object:
-
-```json
-{
-  "input_tokens": 10,
-  "cache_creation_input_tokens": 45048,
-  "cache_read_input_tokens": 27423,
-  "output_tokens": 313
-}
-```
+Note: Native mode may underreport actual usage in some scenarios.
 
 The script:
-1. Checks for native `context_window` data first
-2. Falls back to transcript parsing if not available
+1. Tries transcript parsing first (most accurate)
+2. Falls back to native `context_window` data if transcripts unavailable
 3. Calculates percentage based on the context window size
 4. Returns a compact, color-coded status line
 
@@ -123,11 +125,9 @@ The script automatically detects your model and sets the appropriate context lim
 
 You can! But claude-pulse offers:
 - **Always visible** - No need to run `/context` manually
-- **Native accuracy** - Uses Claude Code's own context window data (v2.0.65+)
-- **Lightweight** - Simple JSON parsing, no file I/O in native mode
+- **More accurate** - Uses billing API data which reflects actual context consumption
 - **Automatic** - Updates with every message
-
-With native mode (v2.0.65+), claude-pulse uses the exact same data source as `/context`.
+- **Color-coded** - Visual warnings as you approach limits
 
 ## Troubleshooting
 
@@ -146,11 +146,11 @@ With native mode (v2.0.65+), claude-pulse uses the exact same data source as `/c
 
 ## Known Issues
 
-**~3% difference from /context (Legacy mode only)**
-- In legacy mode (< v2.0.65), claude-pulse uses API billing data from transcripts
-- `/context` uses Claude Code's estimation
+**Small differences from /context**
+- claude-pulse uses API billing data from transcripts (most accurate for actual usage)
+- `/context` uses Claude Code's internal estimation
 - Difference is typically 2-3k tokens on a 70k total (~3%)
-- **Native mode (v2.0.65+)**: No difference - uses the same data source as `/context`
+- The billing API data better reflects when you're actually approaching context limits
 
 ## Credits
 

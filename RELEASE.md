@@ -1,5 +1,33 @@
 # Release Notes
 
+## v1.2.0 - Prefer Billing API for Accuracy
+
+**Released:** December 11, 2025
+
+### What's New
+
+Native `context_window` data was found to underreport actual context usage (~60% shown when context was actually full). v1.2 reverses the priority: transcript parsing (billing API) is now primary, with native mode as fallback.
+
+### Changes
+
+- **Billing API first**: Transcript parsing is now the primary method for accurate token counts
+- **Native as fallback**: `context_window` data is used only when transcripts are unavailable
+- **Added CLAUDE.md**: Project guidance for Claude Code
+
+### Why This Change?
+
+Testing revealed that native `context_window` data could show ~60% usage when the context was actually full. The billing API from transcripts (summing `input_tokens`, `cache_creation_input_tokens`, and `cache_read_input_tokens`) provides more accurate counts that reflect actual context consumption.
+
+### Upgrade
+
+```bash
+cd claude-pulse
+git pull
+./install.sh
+```
+
+---
+
 ## v1.1.0 - Native Context Window Support
 
 **Released:** December 11, 2025
