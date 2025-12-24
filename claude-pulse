@@ -1,7 +1,7 @@
 #!/bin/bash
-# claude-pulse v1.2: Real-time token usage for Claude Code status line
-# Prefers transcript parsing (billing API) for accuracy
-# Falls back to native context_window if transcript unavailable
+# claude-pulse v1.3.1: Real-time token usage for Claude Code status line
+# Uses billing API (transcript) for accurate FULL context usage
+# Falls back to native context_window when transcript unavailable
 
 # Read JSON input from stdin
 input=$(cat)
@@ -28,22 +28,28 @@ case "$model_id" in
         ;;
 esac
 
-# Primary: Parse transcript files (billing API - more accurate)
+# Primary: Billing API from transcript (includes ALL context: messages + system + MCP tools)
+# Sum: input_tokens + cache_creation_input_tokens + cache_read_input_tokens
+# This matches what /context shows
 if [[ -f "$transcript_path" ]]; then
-    input_tokens=$(tail -r "$transcript_path" 2>/dev/null | jq --arg sid "$session_id" -s '
+    # Use tail -r on macOS, tac on Linux
+    if command -v tac &>/dev/null; then
+        reverse_cmd="tac"
+    else
+        reverse_cmd="tail -r"
+    fi
+    input_tokens=$($reverse_cmd "$transcript_path" 2>/dev/null | jq --arg sid "$session_id" -s '
         map(select(.sessionId == $sid and .message.usage)) |
         if length > 0 then
             .[0].message.usage |
-            ((.input_tokens // 0) +
-             (.cache_creation_input_tokens // 0) +
-             (.cache_read_input_tokens // 0))
+            ((.input_tokens // 0) + (.cache_creation_input_tokens // 0) + (.cache_read_input_tokens // 0))
         else
             null
         end
     ' 2>/dev/null)
 fi
 
-# Fallback: native context_window data (may underreport)
+# Fallback: Native context_window (conversation only, missing MCP/system overhead)
 if [[ -z "$input_tokens" ]] || [[ "$input_tokens" == "null" ]]; then
     native_input=$(echo "$input" | jq -r '.context_window.total_input_tokens // null')
     native_output=$(echo "$input" | jq -r '.context_window.total_output_tokens // null')

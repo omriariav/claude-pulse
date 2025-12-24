@@ -1,5 +1,47 @@
 # Release Notes
 
+## v1.3.1 - Accurate Full Context Usage
+
+**Released:** December 24, 2025
+
+### What's New
+
+- **Windows support**: Native PowerShell script (`claude-pulse.ps1`) for Windows users
+- **Linux support**: Auto-detection of `tac` vs `tail -r` for transcript parsing
+- **Accurate context display**: Shows FULL context usage matching `/context` command
+
+### Why This Change?
+
+v1.3.0 incorrectly prioritized native `context_window` which only shows conversation tokens, missing critical overhead:
+- System prompt (~3k tokens)
+- System tools (~15k tokens)
+- MCP tools (can be 50-100k+ tokens!)
+- Memory files
+
+This caused claude-pulse to show ~88% when `/context` showed 124%. The billing API's `input_tokens` field includes ALL context, matching what `/context` displays.
+
+**>100% is not a bug** - it means your context has exceeded the limit and Claude Code will auto-compact.
+
+### Upgrade
+
+```bash
+cd claude-pulse
+git pull
+./install.sh
+```
+
+For Windows users, see README for PowerShell installation instructions.
+
+---
+
+## v1.3.0 - Windows Support (Superseded by v1.3.1)
+
+**Released:** December 24, 2025
+
+This version incorrectly prioritized native `context_window` data. Use v1.3.1 instead.
+
+---
+
 ## v1.2.0 - Prefer Billing API for Accuracy
 
 **Released:** December 11, 2025

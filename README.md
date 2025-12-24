@@ -1,12 +1,16 @@
 # claude-pulse
 
-> Real-time token usage monitoring for Claude Code status line | **v1.2**
+> Real-time token usage monitoring for Claude Code status line | **v1.3.1**
 
 **claude-pulse** displays your current Claude Code token usage directly in your status line, helping you stay aware of context consumption without running `/context` manually.
 
-## New in v1.2: Accurate Billing API
+## New in v1.3.1: Accurate Full Context Usage
 
-**v1.2** prioritizes the billing API from transcript files for more accurate token counts. Native `context_window` data (v1.1) was found to underreport actual usage (~60% shown when context was actually full). Transcript parsing now takes priority, with native mode as fallback.
+- **Windows support** - Native PowerShell script for Windows users
+- **Linux support** - Automatic detection of `tac` vs `tail -r`
+- **Accurate display** - Shows FULL context usage matching `/context` command (including MCP tools, system prompt, etc.)
+
+**Note:** >100% is normal when context exceeds the limit - Claude Code will auto-compact.
 
 See [RELEASE.md](RELEASE.md) for full release notes.
 
@@ -38,7 +42,7 @@ Color changes based on usage:
 
 ## Installation
 
-### Quick Install
+### macOS / Linux
 
 ```bash
 git clone https://github.com/omriariav/claude-pulse.git
@@ -46,7 +50,29 @@ cd claude-pulse
 ./install.sh
 ```
 
-### Manual Install
+**Requirements**: `jq` (brew install jq / apt install jq)
+
+### Windows (PowerShell)
+
+1. Clone or download the repository
+2. Copy `claude-pulse.ps1` to your `.claude` folder:
+   ```powershell
+   Copy-Item claude-pulse.ps1 "$env:USERPROFILE\.claude\statusline-command.ps1"
+   ```
+
+3. Add to your Claude Code `settings.json`:
+   ```json
+   {
+     "statusLine": {
+       "type": "command",
+       "command": "powershell -ExecutionPolicy Bypass -File C:/Users/YOUR_USERNAME/.claude/statusline-command.ps1"
+     }
+   }
+   ```
+
+4. Restart Claude Code
+
+### Manual Install (macOS/Linux)
 
 1. Copy `claude-pulse` to `~/.claude/statusline-command.sh`:
    ```bash
@@ -57,7 +83,10 @@ cd claude-pulse
 2. Add to your Claude Code `settings.json`:
    ```json
    {
-     "statusLineCommand": "~/.claude/statusline-command.sh"
+     "statusLine": {
+       "type": "command",
+       "command": "~/.claude/statusline-command.sh"
+     }
    }
    ```
 
@@ -66,30 +95,16 @@ cd claude-pulse
 ## Requirements
 
 - **Claude Code** (obviously!)
-- **jq** - JSON parser
+- **macOS/Linux**: `jq` JSON parser
   - macOS: `brew install jq`
   - Linux: `sudo apt-get install jq`
+- **Windows**: PowerShell (included in Windows)
 
 ## How It Works
 
-### Primary: Transcript Billing API
+### Primary: Native Context Window (Claude Code v2.0.65+)
 
-claude-pulse reads token usage from Claude Code's transcript files (JSONL format). Each API response includes a `usage` object with billing data:
-
-```json
-{
-  "input_tokens": 10,
-  "cache_creation_input_tokens": 45048,
-  "cache_read_input_tokens": 27423,
-  "output_tokens": 313
-}
-```
-
-This method provides accurate token counts that match actual context consumption.
-
-### Fallback: Native Mode (Claude Code v2.0.65+)
-
-If transcript parsing fails, claude-pulse falls back to native `context_window` data:
+claude-pulse reads the native `context_window` data from Claude Code's status line input:
 
 ```json
 {
@@ -101,12 +116,16 @@ If transcript parsing fails, claude-pulse falls back to native `context_window` 
 }
 ```
 
-Note: Native mode may underreport actual usage in some scenarios.
+This provides accurate context window usage.
+
+### Fallback: Transcript Parsing
+
+For older Claude Code versions without native `context_window`, claude-pulse falls back to parsing transcript files (JSONL format) for the `input_tokens` field.
 
 The script:
-1. Tries transcript parsing first (most accurate)
-2. Falls back to native `context_window` data if transcripts unavailable
-3. Calculates percentage based on the context window size
+1. Checks for native `context_window` data (most accurate)
+2. Falls back to transcript parsing for older versions
+3. Calculates percentage based on context window size
 4. Returns a compact, color-coded status line
 
 ## Supported Models
@@ -147,10 +166,8 @@ You can! But claude-pulse offers:
 ## Known Issues
 
 **Small differences from /context**
-- claude-pulse uses API billing data from transcripts (most accurate for actual usage)
-- `/context` uses Claude Code's internal estimation
-- Difference is typically 2-3k tokens on a 70k total (~3%)
-- The billing API data better reflects when you're actually approaching context limits
+- Difference is typically 2-3k tokens (~3%)
+- Both use context window data, but timing of updates may differ slightly
 
 ## Credits
 
