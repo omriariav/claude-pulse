@@ -1,7 +1,8 @@
 #!/bin/bash
-# claude-pulse v1.3.1: Real-time token usage for Claude Code status line
+# claude-pulse v1.4.0: Real-time token usage for Claude Code status line
 # Uses billing API (transcript) for accurate FULL context usage
 # Falls back to native context_window when transcript unavailable
+# Displays current model name (e.g., "Sonnet 4.5")
 
 # Read JSON input from stdin
 input=$(cat)
@@ -12,18 +13,34 @@ transcript_path=$(echo "$input" | jq -r '.transcript_path')
 session_id=$(echo "$input" | jq -r '.session_id')
 model_id=$(echo "$input" | jq -r '.model.id // "claude-sonnet-4-5-20250929"')
 
-# Determine context limit based on model ID
+# Convert model ID to friendly name
 case "$model_id" in
-    claude-opus-4*|claude-sonnet-4*|claude-sonnet-3-7*|claude-3-7-sonnet*)
+    claude-opus-4*)
+        model_name="Opus 4.5"
+        context_limit=200000
+        ;;
+    claude-sonnet-4*)
+        model_name="Sonnet 4.5"
         context_limit=200000
         ;;
     claude-haiku-3-5*|claude-3-5-haiku*)
+        model_name="Haiku 3.5"
         context_limit=200000
         ;;
-    claude-opus-3*|claude-sonnet-3-5*|claude-3-5-sonnet*|claude-3-opus*)
+    claude-sonnet-3-5*|claude-3-5-sonnet*)
+        model_name="Sonnet 3.5"
+        context_limit=200000
+        ;;
+    claude-opus-3*|claude-3-opus*)
+        model_name="Opus 3"
+        context_limit=200000
+        ;;
+    claude-sonnet-3-7*|claude-3-7-sonnet*)
+        model_name="Sonnet 3.7"
         context_limit=200000
         ;;
     *)
+        model_name="Claude"
         context_limit=200000
         ;;
 esac
@@ -66,10 +83,10 @@ fi
 # If still no data, check if transcript exists but has no usage yet
 if [[ -z "$input_tokens" ]] || [[ "$input_tokens" == "null" ]]; then
     if [[ ! -f "$transcript_path" ]]; then
-        printf "🧠 Transcript not found\n📁 ${cwd}"
+        printf "🧠 Transcript not found 📁 ${cwd}"
         exit 0
     fi
-    printf "🧠 No token usage yet\n📁 ${cwd}"
+    printf "🧠 No token usage yet 📁 ${cwd}"
     exit 0
 fi
 
@@ -100,5 +117,5 @@ else
 fi
 reset="\033[0m"
 
-# Output format: "🧠 64k/200k (32%)" - shows usage, limit, and percentage
-printf "${color}🧠 ${tokens_fmt}/${limit_fmt} (${percent}%%)${reset}\n📁 ${cwd}"
+# Output format: "🧠 64k/200k (32%) · Sonnet 4.5 📁 /path" - all on one line
+printf "${color}🧠 ${tokens_fmt}/${limit_fmt} (${percent}%%) · ${model_name}${reset} 📁 ${cwd}"

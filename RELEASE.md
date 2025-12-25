@@ -1,5 +1,44 @@
 # Release Notes
 
+## v1.4.0 - Model Display & Single-Line Output
+
+**Released:** December 25, 2025
+
+### What's New
+
+- **Model display**: Shows which Claude model you're using (e.g., "Sonnet 4.5", "Opus 4.5", "Haiku 3.5")
+- **Single-line output**: Token usage, model name, and working directory all on one compact line
+- **Better UX**: More information in less vertical space
+
+### Display Format
+
+Before:
+```
+🧠 72k/200k (36%)
+📁 /Users/you/project
+```
+
+After:
+```
+🧠 72k/200k (36%) · Sonnet 4.5 📁 /Users/you/project
+```
+
+### Why This Change?
+
+Based on user feedback, the two-line format took up too much vertical space in the status line. The new single-line format provides more information (including which model you're using) while being more compact.
+
+### Upgrade
+
+```bash
+cd claude-pulse
+git pull
+./install.sh
+```
+
+For Windows users, re-copy `claude-pulse.ps1` to your `.claude` folder.
+
+---
+
 ## v1.3.1 - Accurate Full Context Usage
 
 **Released:** December 24, 2025

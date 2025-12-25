@@ -20,7 +20,8 @@ The project consists of:
 2. **Primary**: Parses transcript JSONL for `input_tokens` (billing API) - includes ALL context
 3. **Fallback**: Uses native `context_window` data if transcript unavailable
 4. Calculates percentage and applies color coding (green <50%, yellow 50-79%, red 80%+)
-5. Outputs two lines: token usage and current working directory
+5. Converts model ID to friendly name (e.g., "Sonnet 4.5", "Opus 4.5", "Haiku 3.5")
+6. Outputs single line: token usage, model name, and current working directory
 
 ### Key implementation details
 

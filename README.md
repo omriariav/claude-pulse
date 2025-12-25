@@ -1,13 +1,13 @@
 # claude-pulse
 
-> Real-time token usage monitoring for Claude Code status line | **v1.3.1**
+> Real-time token usage monitoring for Claude Code status line | **v1.4.0**
 
 **claude-pulse** displays your current Claude Code token usage directly in your status line, helping you stay aware of context consumption without running `/context` manually.
 
-## New in v1.3.1: Accurate Full Context Usage
+## New in v1.4.0: Model Display
 
-- **Windows support** - Native PowerShell script for Windows users
-- **Linux support** - Automatic detection of `tac` vs `tail -r`
+- **Model display** - Shows current model in use (e.g., "Sonnet 4.5", "Opus 4.5", "Haiku 3.5")
+- **Single-line output** - Token usage, model name, and working directory on one compact line
 - **Accurate display** - Shows FULL context usage matching `/context` command (including MCP tools, system prompt, etc.)
 
 **Note:** >100% is normal when context exceeds the limit - Claude Code will auto-compact.
@@ -20,7 +20,8 @@ See [RELEASE.md](RELEASE.md) for full release notes.
 
 - ✅ **Accurate token counting** - Reads actual usage from Claude's API responses
 - ✅ **Model-aware limits** - Automatically detects context limits for different Claude models
-- ✅ **Compact display** - Shows usage as `🧠 72k/200k (36%)` in your status line
+- ✅ **Model display** - Shows which Claude model you're using (e.g., "Sonnet 4.5", "Opus 4.5")
+- ✅ **Compact display** - Single line showing usage, model, and directory
 - ✅ **Color-coded warnings** - Green → Yellow → Red as you approach context limits
 - ✅ **Lightweight** - Pure bash script with minimal dependencies
 - ✅ **Inspired by [ccusage](https://github.com/ryoppippi/ccusage)** - Uses the same accurate parsing approach
@@ -28,12 +29,10 @@ See [RELEASE.md](RELEASE.md) for full release notes.
 ## Demo
 
 ```
-🧠 72k/200k (36%)
-📁 /Users/you/Code/your-project
+🧠 72k/200k (36%) · Sonnet 4.5 📁 /Users/you/Code/your-project
 ```
 
-**First line**: Token usage (current/limit) and percentage
-**Second line**: Current working directory where Claude Code was executed
+Displays token usage (current/limit), percentage, current model, and working directory all on one compact line.
 
 Color changes based on usage:
 - 🟢 **Green** (0-49%): Plenty of context remaining
@@ -102,9 +101,20 @@ cd claude-pulse
 
 ## How It Works
 
-### Primary: Native Context Window (Claude Code v2.0.65+)
+### Primary: Billing API via Transcript (Most Accurate)
 
-claude-pulse reads the native `context_window` data from Claude Code's status line input:
+claude-pulse reads usage data from Claude's transcript files (JSONL format) which contain the actual billing API response. This includes:
+- Message tokens
+- System prompt tokens
+- Tool definitions (including MCP tools)
+- Memory files
+- All context overhead
+
+This matches what `/context` shows - the FULL context usage.
+
+### Fallback: Native Context Window
+
+If transcript data is unavailable, claude-pulse falls back to the native `context_window` data from Claude Code:
 
 ```json
 {
@@ -116,17 +126,12 @@ claude-pulse reads the native `context_window` data from Claude Code's status li
 }
 ```
 
-This provides accurate context window usage.
-
-### Fallback: Transcript Parsing
-
-For older Claude Code versions without native `context_window`, claude-pulse falls back to parsing transcript files (JSONL format) for the `input_tokens` field.
-
 The script:
-1. Checks for native `context_window` data (most accurate)
-2. Falls back to transcript parsing for older versions
-3. Calculates percentage based on context window size
-4. Returns a compact, color-coded status line
+1. Tries to read billing API data from transcript (most accurate)
+2. Falls back to native `context_window` if transcript unavailable
+3. Extracts and converts model ID to friendly name
+4. Calculates percentage and applies color coding
+5. Returns a compact, single-line status display
 
 ## Supported Models
 

@@ -1,12 +1,30 @@
-# claude-pulse.ps1 v1.3.1: Real-time token usage for Claude Code status line (Windows)
+# claude-pulse.ps1 v1.4.0: Real-time token usage for Claude Code status line (Windows)
 # Uses billing API (transcript) for accurate FULL context usage
 # Falls back to native context_window when transcript unavailable
+# Displays current model name (e.g., "Sonnet 4.5")
 
 # Read JSON from stdin
 $inputJson = [Console]::In.ReadToEnd()
 $data = $inputJson | ConvertFrom-Json
 
 $cwd = $data.cwd
+$model_id = if ($data.model.id) { $data.model.id } else { "claude-sonnet-4-5-20250929" }
+
+# Convert model ID to friendly name
+$model_name = switch -Wildcard ($model_id) {
+    "claude-opus-4*" { "Opus 4.5"; break }
+    "claude-sonnet-4*" { "Sonnet 4.5"; break }
+    "claude-haiku-3-5*" { "Haiku 3.5"; break }
+    "claude-3-5-haiku*" { "Haiku 3.5"; break }
+    "claude-sonnet-3-5*" { "Sonnet 3.5"; break }
+    "claude-3-5-sonnet*" { "Sonnet 3.5"; break }
+    "claude-opus-3*" { "Opus 3"; break }
+    "claude-3-opus*" { "Opus 3"; break }
+    "claude-sonnet-3-7*" { "Sonnet 3.7"; break }
+    "claude-3-7-sonnet*" { "Sonnet 3.7"; break }
+    default { "Claude" }
+}
+
 $context_limit = 200000
 
 # Primary: Billing API from transcript (includes ALL context: messages + system + MCP tools)
@@ -33,12 +51,10 @@ if ($null -eq $input_tokens -and $null -ne $data.context_window -and $null -ne $
 # No data available
 if ($null -eq $input_tokens) {
     if (-not $data.transcript_path -or -not (Test-Path $data.transcript_path)) {
-        Write-Host "Transcript not found"
-        Write-Host $cwd
+        Write-Host "🧠 Transcript not found 📁 $cwd"
         exit 0
     }
-    Write-Host "No token usage yet"
-    Write-Host $cwd
+    Write-Host "🧠 No token usage yet 📁 $cwd"
     exit 0
 }
 
@@ -68,6 +84,5 @@ if ($percent -ge 80) {
 }
 $reset = "`e[0m"
 
-# Output
-Write-Host "${color}$tokens_fmt/$limit_fmt (${percent}%)${reset}"
-Write-Host $cwd
+# Output format: "🧠 64k/200k (32%) · Sonnet 4.5 📁 /path" - all on one line
+Write-Host "${color}🧠 $tokens_fmt/$limit_fmt (${percent}%) · ${model_name}${reset} 📁 $cwd"
