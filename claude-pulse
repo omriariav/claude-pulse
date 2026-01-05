@@ -1,5 +1,5 @@
 #!/bin/bash
-# claude-pulse v1.4.0: Real-time token usage for Claude Code status line
+# claude-pulse v1.4.1: Real-time token usage for Claude Code status line
 # Uses billing API (transcript) for accurate FULL context usage
 # Falls back to native context_window when transcript unavailable
 # Displays current model name (e.g., "Sonnet 4.5")
@@ -44,6 +44,12 @@ case "$model_id" in
         context_limit=200000
         ;;
 esac
+
+# Check for actual context window size from JSON (overrides hardcoded defaults)
+actual_limit=$(echo "$input" | jq -r '.context_window.context_window_size // null')
+if [[ "$actual_limit" != "null" ]] && [[ -n "$actual_limit" ]]; then
+    context_limit="$actual_limit"
+fi
 
 # Primary: Billing API from transcript (includes ALL context: messages + system + MCP tools)
 # Sum: input_tokens + cache_creation_input_tokens + cache_read_input_tokens

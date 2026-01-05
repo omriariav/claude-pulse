@@ -1,4 +1,4 @@
-# claude-pulse.ps1 v1.4.0: Real-time token usage for Claude Code status line (Windows)
+# claude-pulse.ps1 v1.4.1: Real-time token usage for Claude Code status line (Windows)
 # Uses billing API (transcript) for accurate FULL context usage
 # Falls back to native context_window when transcript unavailable
 # Displays current model name (e.g., "Sonnet 4.5")

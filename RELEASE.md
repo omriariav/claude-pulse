@@ -1,5 +1,20 @@
 # Release Notes
 
+## v1.4.1 - Dynamic Context Window Detection
+
+**Released:** January 5, 2026
+
+### What's New
+
+- **Dynamic context limits**: Automatically reads actual context window size from Claude Code (200k, 1M, etc.)
+- **Accurate for all models**: No longer hardcoded to 200k - works with extended context models
+- **Mid-conversation updates**: Correctly handles model switches during active conversations
+
+### Bug Fixes
+
+- Fixed issue where statusline would revert to 200k after first message in conversations using 1M context models
+- Context limit now properly updates when switching between models with different context windows
+
 ## v1.4.0 - Model Display & Single-Line Output
 
 **Released:** December 25, 2025

@@ -1,8 +1,13 @@
 # claude-pulse
 
-> Real-time token usage monitoring for Claude Code status line | **v1.4.0**
+> Real-time token usage monitoring for Claude Code status line | **v1.4.1**
 
 **claude-pulse** displays your current Claude Code token usage directly in your status line, helping you stay aware of context consumption without running `/context` manually.
+
+## New in v1.4.1: Dynamic Context Window Detection
+
+- **Dynamic context limits** - Automatically detects and displays correct context window size (200k, 1M, etc.)
+- **Mid-conversation updates** - Correctly updates when switching models during a conversation
 
 ## New in v1.4.0: Model Display
 
