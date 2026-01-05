@@ -27,6 +27,11 @@ $model_name = switch -Wildcard ($model_id) {
 
 $context_limit = 200000
 
+# Check for actual context window size from JSON (overrides hardcoded default)
+if ($null -ne $data.context_window -and $null -ne $data.context_window.context_window_size) {
+    $context_limit = $data.context_window.context_window_size
+}
+
 # Primary: Billing API from transcript (includes ALL context: messages + system + MCP tools)
 # Sum: input_tokens + cache_creation_input_tokens + cache_read_input_tokens
 # This matches what /context shows
