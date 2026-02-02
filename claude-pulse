@@ -1,8 +1,9 @@
 #!/bin/bash
-# claude-pulse v1.4.1: Real-time token usage for Claude Code status line
+# claude-pulse v1.5.0: Real-time token usage for Claude Code status line
 # Uses billing API (transcript) for accurate FULL context usage
 # Falls back to native context_window when transcript unavailable
-# Displays current model name (e.g., "Sonnet 4.5")
+# Displays current model name and AI-generated conversation names
+# Supports Anthropic, OpenAI, and Gemini APIs for name generation
 
 # Read JSON input from stdin
 input=$(cat)
@@ -123,5 +124,85 @@ else
 fi
 reset="\033[0m"
 
-# Output format: "🧠 64k/200k (32%) · Sonnet 4.5 📁 /path" - all on one line
-printf "${color}🧠 ${tokens_fmt}/${limit_fmt} (${percent}%%) · ${model_name}${reset} 📁 ${cwd}"
+# Conversation name lookup
+conv_name=""
+if [[ -n "$transcript_path" ]] && [[ "$transcript_path" != "null" ]] && [[ -n "$session_id" ]] && [[ "$session_id" != "null" ]]; then
+    project_dir=$(dirname "$transcript_path")
+    sessions_index="${project_dir}/sessions-index.json"
+    cache_dir="$HOME/.cache/claude-pulse"
+
+    if [[ -f "$sessions_index" ]]; then
+        summary=$(jq -r --arg sid "$session_id" '.entries[]? | select(.sessionId == $sid) | .summary // empty' "$sessions_index" 2>/dev/null)
+
+        if [[ -n "$summary" ]]; then
+            cache_file="${cache_dir}/${session_id}.name"
+            summary_hash=$(printf '%s' "$summary" | md5 2>/dev/null || printf '%s' "$summary" | md5sum 2>/dev/null | cut -d' ' -f1)
+
+            # Check cache
+            if [[ -f "$cache_file" ]]; then
+                cached_hash=$(head -1 "$cache_file")
+                if [[ "$cached_hash" == "$summary_hash" ]]; then
+                    conv_name=$(tail -1 "$cache_file")
+                fi
+            fi
+
+            # Generate name if not cached
+            if [[ -z "$conv_name" ]]; then
+                # Try Anthropic API
+                if [[ -n "$ANTHROPIC_API_KEY" ]]; then
+                    api_response=$(curl -s --max-time 3 "https://api.anthropic.com/v1/messages" \
+                        -H "content-type: application/json" \
+                        -H "x-api-key: $ANTHROPIC_API_KEY" \
+                        -H "anthropic-version: 2023-06-01" \
+                        -d "$(jq -n --arg s "$summary" '{
+                            model: "claude-haiku-4-5-20251001",
+                            max_tokens: 20,
+                            messages: [{role: "user", content: ("Generate a 2-3 word short name for this conversation topic. Reply with ONLY the short name, nothing else: " + $s)}]
+                        }')" 2>/dev/null)
+                    conv_name=$(echo "$api_response" | jq -r '.content[0].text // empty' 2>/dev/null)
+                fi
+
+                # Try OpenAI API
+                if [[ -z "$conv_name" ]] && [[ -n "$OPENAI_API_KEY" ]]; then
+                    api_response=$(curl -s --max-time 3 "https://api.openai.com/v1/chat/completions" \
+                        -H "content-type: application/json" \
+                        -H "authorization: Bearer $OPENAI_API_KEY" \
+                        -d "$(jq -n --arg s "$summary" '{
+                            model: "gpt-4o-mini",
+                            max_tokens: 20,
+                            messages: [{role: "user", content: ("Generate a 2-3 word short name for this conversation topic. Reply with ONLY the short name, nothing else: " + $s)}]
+                        }')" 2>/dev/null)
+                    conv_name=$(echo "$api_response" | jq -r '.choices[0].message.content // empty' 2>/dev/null)
+                fi
+
+                # Try Gemini API
+                if [[ -z "$conv_name" ]] && [[ -n "$GEMINI_API_KEY" ]]; then
+                    api_response=$(curl -s --max-time 3 "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=$GEMINI_API_KEY" \
+                        -H "content-type: application/json" \
+                        -d "$(jq -n --arg s "$summary" '{
+                            contents: [{parts: [{text: ("Generate a 2-3 word short name for this conversation topic. Reply with ONLY the short name, nothing else: " + $s)}]}]
+                        }')" 2>/dev/null)
+                    conv_name=$(echo "$api_response" | jq -r '.candidates[0].content.parts[0].text // empty' 2>/dev/null)
+                fi
+
+                # Fallback: first 3 words
+                if [[ -z "$conv_name" ]]; then
+                    conv_name=$(echo "$summary" | awk '{for(i=1;i<=3&&i<=NF;i++) printf "%s%s",$i,(i<3&&i<NF?" ":"")}')
+                fi
+
+                # Cache the result
+                mkdir -p "$cache_dir"
+                printf '%s\n%s\n' "$summary_hash" "$conv_name" > "$cache_file"
+            fi
+        fi
+    fi
+fi
+
+# Build name segment
+name_segment=""
+if [[ -n "$conv_name" ]]; then
+    name_segment=" · 💬 \"${conv_name}\""
+fi
+
+# Output format: "🧠 64k/200k (32%) · Sonnet 4.5 · name 📁 /path" - all on one line
+printf "${color}🧠 ${tokens_fmt}/${limit_fmt} (${percent}%%) · 🤖 ${model_name}${name_segment}${reset} 📁 ${cwd}"
