@@ -118,6 +118,8 @@ if ($data.transcript_path -and $data.session_id) {
 
             # Generate name if not cached
             if (-not $conv_name) {
+                $prompt = "Generate a 2-3 word short name for this conversation topic. Reply with ONLY the short name, nothing else: $summary"
+
                 # Try Anthropic API
                 if ($env:ANTHROPIC_API_KEY) {
                     try {
@@ -126,7 +128,7 @@ if ($data.transcript_path -and $data.session_id) {
                             max_tokens = 20
                             messages = @(@{
                                 role = "user"
-                                content = "Generate a 2-3 word short name for this conversation topic. Reply with ONLY the short name, nothing else: $summary"
+                                content = $prompt
                             })
                         } | ConvertTo-Json -Depth 3
                         $headers = @{
@@ -147,7 +149,7 @@ if ($data.transcript_path -and $data.session_id) {
                             max_tokens = 20
                             messages = @(@{
                                 role = "user"
-                                content = "Generate a 2-3 word short name for this conversation topic. Reply with ONLY the short name, nothing else: $summary"
+                                content = $prompt
                             })
                         } | ConvertTo-Json -Depth 3
                         $headers = @{
@@ -165,14 +167,15 @@ if ($data.transcript_path -and $data.session_id) {
                         $body = @{
                             contents = @(@{
                                 parts = @(@{
-                                    text = "Generate a 2-3 word short name for this conversation topic. Reply with ONLY the short name, nothing else: $summary"
+                                    text = $prompt
                                 })
                             })
                         } | ConvertTo-Json -Depth 3
                         $headers = @{
                             "content-type" = "application/json"
+                            "x-goog-api-key" = $env:GEMINI_API_KEY
                         }
-                        $resp = Invoke-RestMethod -Uri "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=$env:GEMINI_API_KEY" -Method Post -Headers $headers -Body $body -TimeoutSec 3
+                        $resp = Invoke-RestMethod -Uri "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent" -Method Post -Headers $headers -Body $body -TimeoutSec 3
                         $conv_name = $resp.candidates[0].content.parts[0].text
                     } catch {}
                 }
@@ -183,9 +186,20 @@ if ($data.transcript_path -and $data.session_id) {
                     $conv_name = $words -join ' '
                 }
 
-                # Cache the result
-                if (-not (Test-Path $cache_dir)) { New-Item -ItemType Directory -Path $cache_dir -Force | Out-Null }
-                @($summary_hash, $conv_name) | Set-Content $cache_file
+                # Cache the result (only if valid)
+                if ($conv_name -and $conv_name -ne "null") {
+                    if (-not (Test-Path $cache_dir)) {
+                        New-Item -ItemType Directory -Path $cache_dir -Force | Out-Null
+                        # Set restrictive permissions (owner only)
+                        $acl = Get-Acl $cache_dir
+                        $acl.SetAccessRuleProtection($true, $false)
+                        $identity = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
+                        $rule = New-Object System.Security.AccessControl.FileSystemAccessRule($identity, "FullControl", "ContainerInherit,ObjectInherit", "None", "Allow")
+                        $acl.SetAccessRule($rule)
+                        Set-Acl $cache_dir $acl
+                    }
+                    @($summary_hash, $conv_name) | Set-Content $cache_file
+                }
             }
         }
     }

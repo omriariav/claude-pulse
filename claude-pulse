@@ -148,16 +148,18 @@ if [[ -n "$transcript_path" ]] && [[ "$transcript_path" != "null" ]] && [[ -n "$
 
             # Generate name if not cached
             if [[ -z "$conv_name" ]]; then
+                prompt="Generate a 2-3 word short name for this conversation topic. Reply with ONLY the short name, nothing else: ${summary}"
+
                 # Try Anthropic API
                 if [[ -n "$ANTHROPIC_API_KEY" ]]; then
                     api_response=$(curl -s --max-time 3 "https://api.anthropic.com/v1/messages" \
                         -H "content-type: application/json" \
                         -H "x-api-key: $ANTHROPIC_API_KEY" \
                         -H "anthropic-version: 2023-06-01" \
-                        -d "$(jq -n --arg s "$summary" '{
+                        -d "$(jq -n --arg p "$prompt" '{
                             model: "claude-haiku-4-5-20251001",
                             max_tokens: 20,
-                            messages: [{role: "user", content: ("Generate a 2-3 word short name for this conversation topic. Reply with ONLY the short name, nothing else: " + $s)}]
+                            messages: [{role: "user", content: $p}]
                         }')" 2>/dev/null)
                     conv_name=$(echo "$api_response" | jq -r '.content[0].text // empty' 2>/dev/null)
                 fi
@@ -167,20 +169,21 @@ if [[ -n "$transcript_path" ]] && [[ "$transcript_path" != "null" ]] && [[ -n "$
                     api_response=$(curl -s --max-time 3 "https://api.openai.com/v1/chat/completions" \
                         -H "content-type: application/json" \
                         -H "authorization: Bearer $OPENAI_API_KEY" \
-                        -d "$(jq -n --arg s "$summary" '{
+                        -d "$(jq -n --arg p "$prompt" '{
                             model: "gpt-4o-mini",
                             max_tokens: 20,
-                            messages: [{role: "user", content: ("Generate a 2-3 word short name for this conversation topic. Reply with ONLY the short name, nothing else: " + $s)}]
+                            messages: [{role: "user", content: $p}]
                         }')" 2>/dev/null)
                     conv_name=$(echo "$api_response" | jq -r '.choices[0].message.content // empty' 2>/dev/null)
                 fi
 
                 # Try Gemini API
                 if [[ -z "$conv_name" ]] && [[ -n "$GEMINI_API_KEY" ]]; then
-                    api_response=$(curl -s --max-time 3 "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=$GEMINI_API_KEY" \
+                    api_response=$(curl -s --max-time 3 "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent" \
                         -H "content-type: application/json" \
-                        -d "$(jq -n --arg s "$summary" '{
-                            contents: [{parts: [{text: ("Generate a 2-3 word short name for this conversation topic. Reply with ONLY the short name, nothing else: " + $s)}]}]
+                        -H "x-goog-api-key: $GEMINI_API_KEY" \
+                        -d "$(jq -n --arg p "$prompt" '{
+                            contents: [{parts: [{text: $p}]}]
                         }')" 2>/dev/null)
                     conv_name=$(echo "$api_response" | jq -r '.candidates[0].content.parts[0].text // empty' 2>/dev/null)
                 fi
@@ -190,9 +193,12 @@ if [[ -n "$transcript_path" ]] && [[ "$transcript_path" != "null" ]] && [[ -n "$
                     conv_name=$(echo "$summary" | awk '{for(i=1;i<=3&&i<=NF;i++) printf "%s%s",$i,(i<3&&i<NF?" ":"")}')
                 fi
 
-                # Cache the result
-                mkdir -p "$cache_dir"
-                printf '%s\n%s\n' "$summary_hash" "$conv_name" > "$cache_file"
+                # Cache the result (only if valid)
+                if [[ -n "$conv_name" ]] && [[ "$conv_name" != "null" ]]; then
+                    mkdir -p "$cache_dir"
+                    chmod 700 "$cache_dir"  # Restrict to owner only
+                    printf '%s\n%s\n' "$summary_hash" "$conv_name" > "$cache_file"
+                fi
             fi
         fi
     fi
