@@ -1,5 +1,29 @@
 # Release Notes
 
+## v1.5.1 - Opus 4.6 Support
+
+**Released:** February 6, 2026
+
+### What's New
+
+- **Opus 4.6 detection**: Correctly identifies `claude-opus-4-6` model ID and displays "Opus 4.6" in the statusline
+- **1M context ready**: Existing dynamic detection automatically handles Opus 4.6's extended context window (displays `505k/1000k` etc.)
+
+### Changes
+
+- Added `claude-opus-4-6*` pattern before the generic `claude-opus-4*` case in both bash and PowerShell scripts
+- Opus 4.5 continues to match correctly via the existing `claude-opus-4*` pattern
+
+### Upgrade
+
+```bash
+cd claude-pulse
+git pull
+./install.sh
+```
+
+---
+
 ## v1.4.1 - Dynamic Context Window Detection
 
 **Released:** January 5, 2026
