@@ -128,81 +128,101 @@ else
 fi
 reset="\033[0m"
 
+# Generate a short name via AI APIs. Takes prompt as $1, returns name via stdout.
+generate_name_via_api() {
+    local prompt="$1"
+    local name=""
+
+    # Try Anthropic API
+    if [[ -n "$ANTHROPIC_API_KEY" ]]; then
+        local api_response
+        api_response=$(curl -s --max-time 3 "https://api.anthropic.com/v1/messages" \
+            -H "content-type: application/json" \
+            -H "x-api-key: $ANTHROPIC_API_KEY" \
+            -H "anthropic-version: 2023-06-01" \
+            -d "$(jq -n --arg p "$prompt" '{
+                model: "claude-haiku-4-5-20251001",
+                max_tokens: 20,
+                messages: [{role: "user", content: $p}]
+            }')" 2>/dev/null)
+        name=$(echo "$api_response" | jq -r '.content[0].text // empty' 2>/dev/null)
+    fi
+
+    # Try OpenAI API
+    if [[ -z "$name" ]] && [[ -n "$OPENAI_API_KEY" ]]; then
+        local api_response
+        api_response=$(curl -s --max-time 3 "https://api.openai.com/v1/chat/completions" \
+            -H "content-type: application/json" \
+            -H "authorization: Bearer $OPENAI_API_KEY" \
+            -d "$(jq -n --arg p "$prompt" '{
+                model: "gpt-4o-mini",
+                max_tokens: 20,
+                messages: [{role: "user", content: $p}]
+            }')" 2>/dev/null)
+        name=$(echo "$api_response" | jq -r '.choices[0].message.content // empty' 2>/dev/null)
+    fi
+
+    # Try Gemini API
+    if [[ -z "$name" ]] && [[ -n "$GEMINI_API_KEY" ]]; then
+        local api_response
+        api_response=$(curl -s --max-time 3 "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent" \
+            -H "content-type: application/json" \
+            -H "x-goog-api-key: $GEMINI_API_KEY" \
+            -d "$(jq -n --arg p "$prompt" '{
+                contents: [{parts: [{text: $p}]}]
+            }')" 2>/dev/null)
+        name=$(echo "$api_response" | jq -r '.candidates[0].content.parts[0].text // empty' 2>/dev/null)
+    fi
+
+    printf '%s' "$name"
+}
+
 # Conversation name lookup
 conv_name=""
 if [[ -n "$transcript_path" ]] && [[ "$transcript_path" != "null" ]] && [[ -n "$session_id" ]] && [[ "$session_id" != "null" ]]; then
     project_dir=$(dirname "$transcript_path")
     sessions_index="${project_dir}/sessions-index.json"
     cache_dir="$HOME/.cache/claude-pulse"
+    cache_file="${cache_dir}/${session_id}.name"
 
+    # Source 1: Session summary from sessions-index.json (set by /rename or conversation end)
+    summary=""
     if [[ -f "$sessions_index" ]]; then
         summary=$(jq -r --arg sid "$session_id" '.entries[]? | select(.sessionId == $sid) | .summary // empty' "$sessions_index" 2>/dev/null)
+    fi
 
-        if [[ -n "$summary" ]]; then
-            cache_file="${cache_dir}/${session_id}.name"
-            summary_hash=$(printf '%s' "$summary" | md5 2>/dev/null || printf '%s' "$summary" | md5sum 2>/dev/null | cut -d' ' -f1)
+    # Source 2: Infer from first assistant messages in transcript (for active sessions without summary)
+    if [[ -z "$summary" ]] && [[ -f "$transcript_path" ]]; then
+        summary=$(jq -r 'select(.type == "assistant") | [.message.content[]? | select(.type == "text") | .text] | .[0] // empty' "$transcript_path" 2>/dev/null \
+            | grep -v '^$' | head -3 | tr '\n' ' ' | sed 's/^[[:space:]]*//' | cut -c1-300)
+    fi
 
-            # Check cache
-            if [[ -f "$cache_file" ]]; then
-                cached_hash=$(head -1 "$cache_file")
-                if [[ "$cached_hash" == "$summary_hash" ]]; then
-                    conv_name=$(tail -1 "$cache_file")
-                fi
+    if [[ -n "$summary" ]]; then
+        summary_hash=$(printf '%s' "$summary" | md5 2>/dev/null || printf '%s' "$summary" | md5sum 2>/dev/null | cut -d' ' -f1)
+
+        # Check cache
+        if [[ -f "$cache_file" ]]; then
+            cached_hash=$(head -1 "$cache_file")
+            if [[ "$cached_hash" == "$summary_hash" ]]; then
+                conv_name=$(tail -1 "$cache_file")
+            fi
+        fi
+
+        # Generate name if not cached
+        if [[ -z "$conv_name" ]]; then
+            prompt="Generate a 2-3 word short name for this conversation topic. Reply with ONLY the short name, nothing else: ${summary}"
+            conv_name=$(generate_name_via_api "$prompt")
+
+            # Fallback: first 3 words of summary
+            if [[ -z "$conv_name" ]]; then
+                conv_name=$(echo "$summary" | awk '{for(i=1;i<=3&&i<=NF;i++) printf "%s%s",$i,(i<3&&i<NF?" ":"")}')
             fi
 
-            # Generate name if not cached
-            if [[ -z "$conv_name" ]]; then
-                prompt="Generate a 2-3 word short name for this conversation topic. Reply with ONLY the short name, nothing else: ${summary}"
-
-                # Try Anthropic API
-                if [[ -n "$ANTHROPIC_API_KEY" ]]; then
-                    api_response=$(curl -s --max-time 3 "https://api.anthropic.com/v1/messages" \
-                        -H "content-type: application/json" \
-                        -H "x-api-key: $ANTHROPIC_API_KEY" \
-                        -H "anthropic-version: 2023-06-01" \
-                        -d "$(jq -n --arg p "$prompt" '{
-                            model: "claude-haiku-4-5-20251001",
-                            max_tokens: 20,
-                            messages: [{role: "user", content: $p}]
-                        }')" 2>/dev/null)
-                    conv_name=$(echo "$api_response" | jq -r '.content[0].text // empty' 2>/dev/null)
-                fi
-
-                # Try OpenAI API
-                if [[ -z "$conv_name" ]] && [[ -n "$OPENAI_API_KEY" ]]; then
-                    api_response=$(curl -s --max-time 3 "https://api.openai.com/v1/chat/completions" \
-                        -H "content-type: application/json" \
-                        -H "authorization: Bearer $OPENAI_API_KEY" \
-                        -d "$(jq -n --arg p "$prompt" '{
-                            model: "gpt-4o-mini",
-                            max_tokens: 20,
-                            messages: [{role: "user", content: $p}]
-                        }')" 2>/dev/null)
-                    conv_name=$(echo "$api_response" | jq -r '.choices[0].message.content // empty' 2>/dev/null)
-                fi
-
-                # Try Gemini API
-                if [[ -z "$conv_name" ]] && [[ -n "$GEMINI_API_KEY" ]]; then
-                    api_response=$(curl -s --max-time 3 "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent" \
-                        -H "content-type: application/json" \
-                        -H "x-goog-api-key: $GEMINI_API_KEY" \
-                        -d "$(jq -n --arg p "$prompt" '{
-                            contents: [{parts: [{text: $p}]}]
-                        }')" 2>/dev/null)
-                    conv_name=$(echo "$api_response" | jq -r '.candidates[0].content.parts[0].text // empty' 2>/dev/null)
-                fi
-
-                # Fallback: first 3 words
-                if [[ -z "$conv_name" ]]; then
-                    conv_name=$(echo "$summary" | awk '{for(i=1;i<=3&&i<=NF;i++) printf "%s%s",$i,(i<3&&i<NF?" ":"")}')
-                fi
-
-                # Cache the result (only if valid)
-                if [[ -n "$conv_name" ]] && [[ "$conv_name" != "null" ]]; then
-                    mkdir -p "$cache_dir"
-                    chmod 700 "$cache_dir"  # Restrict to owner only
-                    printf '%s\n%s\n' "$summary_hash" "$conv_name" > "$cache_file"
-                fi
+            # Cache the result (only if valid)
+            if [[ -n "$conv_name" ]] && [[ "$conv_name" != "null" ]]; then
+                mkdir -p "$cache_dir"
+                chmod 700 "$cache_dir"
+                printf '%s\n%s\n' "$summary_hash" "$conv_name" > "$cache_file"
             fi
         fi
     fi
