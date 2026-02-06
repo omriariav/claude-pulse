@@ -1,18 +1,20 @@
 # Release Notes
 
-## v1.5.1 - Opus 4.6 Support
+## v1.6.0 - Active Session Names & Opus 4.6
 
 **Released:** February 6, 2026
 
 ### What's New
 
+- **Active session names**: Conversation names now appear from the first message — for sessions without a `/rename` summary, the script infers a topic from the first few assistant messages in the transcript
 - **Opus 4.6 detection**: Correctly identifies `claude-opus-4-6` model ID and displays "Opus 4.6" in the statusline
-- **1M context ready**: Existing dynamic detection automatically handles Opus 4.6's extended context window (displays `505k/1000k` etc.)
+- **1M context ready**: Dynamic detection handles Opus 4.6's extended context window automatically
 
 ### Changes
 
-- Added `claude-opus-4-6*` pattern before the generic `claude-opus-4*` case in both bash and PowerShell scripts
-- Opus 4.5 continues to match correctly via the existing `claude-opus-4*` pattern
+- Added transcript-based fallback for conversation name inference when no session summary exists
+- Refactored AI API call logic into reusable functions (`generate_name_via_api` in bash, `Get-ConversationName` in PowerShell)
+- Added `claude-opus-4-6*` pattern before the generic `claude-opus-4*` case in both scripts
 
 ### Upgrade
 

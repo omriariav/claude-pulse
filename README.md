@@ -1,13 +1,15 @@
 # claude-pulse
 
-> Real-time token usage monitoring for Claude Code status line | **v1.5.1**
+> Real-time token usage monitoring for Claude Code status line | **v1.6.0**
 
 **claude-pulse** displays your current Claude Code token usage directly in your status line, helping you stay aware of context consumption without running `/context` manually.
 
-## New in v1.5.1: Opus 4.6 Support
+## New in v1.6.0: Active Session Names & Opus 4.6
 
+- **Active session names** - Conversation names now work from the first message, even before `/rename` — inferred from transcript content via AI
 - **Opus 4.6 detection** - Correctly identifies `claude-opus-4-6` as "Opus 4.6" in the statusline
 - **1M context ready** - Dynamic detection handles Opus 4.6's extended context window automatically
+- **Refactored API calls** - AI provider logic extracted into reusable functions in both bash and PowerShell
 
 ## Previous Updates
 
@@ -180,7 +182,13 @@ export GEMINI_API_KEY=...
 
 The script tries APIs in this order: Anthropic → OpenAI → Gemini → Fallback (first 3 words).
 
-**Without an API key**, conversation names will be the first 3 words of the session summary (still useful!).
+**Without an API key**, conversation names will be the first 3 words of the session summary or transcript (still useful!).
+
+### How Conversation Names Work
+
+1. **Named sessions** — If you've used `/rename`, the saved summary is sent to the AI for a 2-3 word name
+2. **Active sessions** — For sessions without a name yet, the first few assistant messages from the transcript are used to infer a topic
+3. **Caching** — Generated names are cached in `~/.cache/claude-pulse/` to avoid repeated API calls
 
 After adding your API key, restart your terminal or run `source ~/.zshrc` to apply.
 
