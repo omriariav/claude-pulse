@@ -1,5 +1,40 @@
 # Release Notes
 
+## v1.7.0 - Context Bar, Branch/PR, Cleaner Topic UX
+
+**Released:** February 23, 2026
+
+### What's New
+
+- **Visual context bar**: 20-character progress bar shows context **consumed** — bar fills up as you use more context, color shifts from green to yellow to red
+- **Git branch + PR number**: Shows current branch (e.g., `🌿 feat/bar`) and open PR number (e.g., `🌿 fix/auth (#42)`) with 10-minute caching to avoid slow API calls
+- **Cleaner topic names**: Removed noisy quotes around conversation names, added 20-char truncation with `..` for long names
+- **macOS-compatible timeout**: PR lookup uses portable background-process timeout instead of GNU `timeout`
+- **Atomic cache writes**: All cache files written via temp+rename to prevent partial reads
+- **Bash/PowerShell parity**: Consistent rounding at color thresholds across platforms
+
+### Display Format
+
+Before (v1.6.0):
+```
+🧠 64k/200k (32%) · 🤖 Opus 4.6 · 💬 "Topic Name" 📁 ~/Code/project
+```
+
+After (v1.7.0):
+```
+🧠 [██████░░░░░░░░░░░░░░] 32% · 🤖 Opus 4.6 · 💬 Topic Name · 🌿 feat/bar 📁 ~/Code/project
+```
+
+### Upgrade
+
+```bash
+cd claude-pulse
+git pull
+./install.sh
+```
+
+---
+
 ## v1.6.0 - Active Session Names & Opus 4.6
 
 **Released:** February 6, 2026
