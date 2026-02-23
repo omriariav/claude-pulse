@@ -66,7 +66,7 @@ if ($null -eq $input_tokens) {
 }
 
 # Calculate percentage
-$percent = [math]::Floor(($input_tokens / $context_limit) * 100)
+$percent = [math]::Round(($input_tokens / $context_limit) * 100)
 
 # Cap percentage for display
 $display_percent = [math]::Min($percent, 100)
@@ -203,7 +203,7 @@ if ($data.transcript_path -and $data.session_id) {
                 $conv_name = $words -join ' '
             }
 
-            # Cache the result (only if valid)
+            # Cache the result atomically (only if valid)
             if ($conv_name -and $conv_name -ne "null") {
                 if (-not (Test-Path $cache_dir)) {
                     New-Item -ItemType Directory -Path $cache_dir -Force | Out-Null
@@ -214,7 +214,9 @@ if ($data.transcript_path -and $data.session_id) {
                     $acl.SetAccessRule($rule)
                     Set-Acl $cache_dir $acl
                 }
-                @($summary_hash, $conv_name) | Set-Content $cache_file
+                $tmp_file = "$cache_file.$PID"
+                @($summary_hash, $conv_name) | Set-Content $tmp_file
+                Move-Item -Path $tmp_file -Destination $cache_file -Force
             }
         }
     }
@@ -274,7 +276,9 @@ if ($branch) {
             if (-not (Test-Path $cache_dir)) {
                 New-Item -ItemType Directory -Path $cache_dir -Force | Out-Null
             }
-            Set-Content -Path $pr_cache_file -Value $pr_number -NoNewline
+            $tmp_file = "$pr_cache_file.$PID"
+            Set-Content -Path $tmp_file -Value $pr_number -NoNewline
+            Move-Item -Path $tmp_file -Destination $pr_cache_file -Force
         }
 
         if ($pr_number -and $pr_number -ne "none") {

@@ -222,11 +222,13 @@ if [[ -n "$transcript_path" ]] && [[ "$transcript_path" != "null" ]] && [[ -n "$
                 conv_name=$(echo "$summary" | awk '{for(i=1;i<=3&&i<=NF;i++) printf "%s%s",$i,(i<3&&i<NF?" ":"")}')
             fi
 
-            # Cache the result (only if valid)
+            # Cache the result atomically (only if valid)
             if [[ -n "$conv_name" ]] && [[ "$conv_name" != "null" ]]; then
                 mkdir -p "$cache_dir"
                 chmod 700 "$cache_dir"
-                printf '%s\n%s\n' "$summary_hash" "$conv_name" > "$cache_file"
+                tmp_file="${cache_file}.$$"
+                printf '%s\n%s\n' "$summary_hash" "$conv_name" > "$tmp_file"
+                mv -f "$tmp_file" "$cache_file"
             fi
         fi
     fi
@@ -278,9 +280,11 @@ if [[ -n "$branch" ]]; then
                 ( sleep 1; kill "$gh_pid" 2>/dev/null ) &
                 wait "$gh_pid" 2>/dev/null
             ) || true
-            # Cache result (even empty = "no PR")
+            # Cache result atomically (even empty = "no PR")
             mkdir -p "$cache_dir"
-            printf '%s' "${pr_number:-none}" > "$pr_cache_file"
+            tmp_file="${pr_cache_file}.$$"
+            printf '%s' "${pr_number:-none}" > "$tmp_file"
+            mv -f "$tmp_file" "$pr_cache_file"
         fi
 
         if [[ -n "$pr_number" ]] && [[ "$pr_number" != "none" ]]; then
