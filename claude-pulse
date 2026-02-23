@@ -257,7 +257,9 @@ if [[ -n "$branch" ]]; then
     # PR lookup with caching (only if gh is available and not on main/master)
     if command -v gh &>/dev/null && [[ "$branch" != "main" ]] && [[ "$branch" != "master" ]]; then
         cwd_hash=$(printf '%s' "$cwd" | md5 2>/dev/null || printf '%s' "$cwd" | md5sum 2>/dev/null | cut -d' ' -f1)
-        pr_cache_file="${cache_dir}/pr-${cwd_hash}-${branch}"
+        # Sanitize branch name for safe cache filename (feat/bar -> feat-bar)
+        safe_branch=$(printf '%s' "$branch" | tr '/' '-')
+        pr_cache_file="${cache_dir}/pr-${cwd_hash}-${safe_branch}"
         pr_number=""
 
         # Check cache (valid for 10 min)
@@ -268,9 +270,14 @@ if [[ -n "$branch" ]]; then
             fi
         fi
 
-        # Fetch PR number if not cached (with tight timeout)
+        # Fetch PR number if not cached (1s timeout, works on both macOS and Linux)
         if [[ -z "$pr_number" ]]; then
-            pr_number=$(timeout 1 gh pr view --json number -q .number 2>/dev/null || true)
+            pr_number=$(
+                gh pr view --json number -q .number 2>/dev/null &
+                gh_pid=$!
+                ( sleep 1; kill "$gh_pid" 2>/dev/null ) &
+                wait "$gh_pid" 2>/dev/null
+            ) || true
             # Cache result (even empty = "no PR")
             mkdir -p "$cache_dir"
             printf '%s' "${pr_number:-none}" > "$pr_cache_file"

@@ -249,7 +249,9 @@ if ($branch) {
                 [System.Text.Encoding]::UTF8.GetBytes($cwd)
             )
         ).Replace("-","").ToLower()
-        $pr_cache_file = Join-Path $cache_dir "pr-$cwd_hash-$branch"
+        # Sanitize branch name for safe cache filename (feat/bar -> feat-bar)
+        $safe_branch = $branch -replace '/', '-'
+        $pr_cache_file = Join-Path $cache_dir "pr-$cwd_hash-$safe_branch"
         $pr_number = ""
 
         # Check cache (valid for 10 min)
@@ -260,10 +262,13 @@ if ($branch) {
             }
         }
 
-        # Fetch PR number if not cached
+        # Fetch PR number if not cached (with 1s timeout)
         if (-not $pr_number) {
             try {
-                $pr_number = gh pr view --json number -q .number 2>$null
+                $job = Start-Job { gh pr view --json number -q .number 2>$null }
+                $completed = $job | Wait-Job -Timeout 1
+                if ($completed) { $pr_number = Receive-Job $job }
+                Remove-Job $job -Force
             } catch {}
             if (-not $pr_number) { $pr_number = "none" }
             if (-not (Test-Path $cache_dir)) {
