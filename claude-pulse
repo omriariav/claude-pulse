@@ -1,5 +1,5 @@
 #!/bin/bash
-# claude-pulse v1.6.0: Real-time token usage for Claude Code status line
+# claude-pulse v1.7.0: Real-time token usage for Claude Code status line
 # Uses billing API (transcript) for accurate FULL context usage
 # Falls back to native context_window when transcript unavailable
 # Displays current model name and AI-generated conversation names
@@ -104,29 +104,34 @@ fi
 # Calculate percentage
 percent=$(awk "BEGIN {printf \"%.0f\", ($input_tokens/$context_limit)*100}")
 
-# Format with K notation (e.g., "48k" instead of "48,000")
-if (( input_tokens >= 1000 )); then
-    tokens_fmt=$(awk "BEGIN {printf \"%.0fk\", $input_tokens/1000}")
-else
-    tokens_fmt="${input_tokens}"
-fi
+# Cap percentage for display
+display_percent=$percent
+if (( display_percent > 100 )); then display_percent=100; fi
 
-# Format context limit with K notation
-if (( context_limit >= 1000 )); then
-    limit_fmt=$(awk "BEGIN {printf \"%.0fk\", $context_limit/1000}")
-else
-    limit_fmt="${context_limit}"
-fi
+# Progress bar (20-char, shows context consumed)
+bar_width=20
+bar_filled=$(( (display_percent * bar_width + 50) / 100 ))
+if (( bar_filled > bar_width )); then bar_filled=$bar_width; fi
+if (( bar_filled < 0 )); then bar_filled=0; fi
+bar_empty=$(( bar_width - bar_filled ))
 
-# Color based on percentage (matching ccusage thresholds)
+bar="["
+for ((i=0; i<bar_filled; i++)); do bar+="█"; done
+for ((i=0; i<bar_empty; i++)); do bar+="░"; done
+bar+="]"
+
+# Color based on usage (green=low, yellow=moderate, red=high)
 if (( percent >= 80 )); then
-    color="\033[31m"  # Red
+    color="\033[31m"  # Red — running high
 elif (( percent >= 50 )); then
-    color="\033[33m"  # Yellow
+    color="\033[33m"  # Yellow — moderate usage
 else
-    color="\033[32m"  # Green
+    color="\033[32m"  # Green — plenty of room
 fi
 reset="\033[0m"
+
+# Cache directory for conversation names and PR lookups
+cache_dir="$HOME/.cache/claude-pulse"
 
 # Generate a short name via AI APIs. Takes prompt as $1, returns name via stdout.
 generate_name_via_api() {
@@ -182,7 +187,6 @@ conv_name=""
 if [[ -n "$transcript_path" ]] && [[ "$transcript_path" != "null" ]] && [[ -n "$session_id" ]] && [[ "$session_id" != "null" ]]; then
     project_dir=$(dirname "$transcript_path")
     sessions_index="${project_dir}/sessions-index.json"
-    cache_dir="$HOME/.cache/claude-pulse"
     cache_file="${cache_dir}/${session_id}.name"
 
     # Source 1: Session summary from sessions-index.json (set by /rename or conversation end)
@@ -228,11 +232,55 @@ if [[ -n "$transcript_path" ]] && [[ "$transcript_path" != "null" ]] && [[ -n "$
     fi
 fi
 
+# Truncate long conversation names
+if [[ -n "$conv_name" ]] && (( ${#conv_name} > 20 )); then
+    conv_name="${conv_name:0:18}.."
+fi
+
 # Build name segment
 name_segment=""
 if [[ -n "$conv_name" ]]; then
-    name_segment=" · 💬 \"${conv_name}\""
+    name_segment=" · 💬 ${conv_name}"
 fi
 
-# Output format: "🧠 64k/200k (32%) · Sonnet 4.5 · name 📁 /path" - all on one line
-printf "${color}🧠 ${tokens_fmt}/${limit_fmt} (${percent}%%) · 🤖 ${model_name}${name_segment}${reset} 📁 ${cwd}"
+# Git branch detection
+branch=""
+if command -v git &>/dev/null; then
+    branch=$(git -C "$cwd" branch --show-current 2>/dev/null)
+fi
+
+# Git branch + PR number segment
+pr_segment=""
+if [[ -n "$branch" ]]; then
+    pr_segment=" · 🌿 ${branch}"
+
+    # PR lookup with caching (only if gh is available and not on main/master)
+    if command -v gh &>/dev/null && [[ "$branch" != "main" ]] && [[ "$branch" != "master" ]]; then
+        cwd_hash=$(printf '%s' "$cwd" | md5 2>/dev/null || printf '%s' "$cwd" | md5sum 2>/dev/null | cut -d' ' -f1)
+        pr_cache_file="${cache_dir}/pr-${cwd_hash}-${branch}"
+        pr_number=""
+
+        # Check cache (valid for 10 min)
+        if [[ -f "$pr_cache_file" ]]; then
+            cache_age=$(( $(date +%s) - $(stat -f%m "$pr_cache_file" 2>/dev/null || stat -c%Y "$pr_cache_file" 2>/dev/null) ))
+            if (( cache_age < 600 )); then
+                pr_number=$(cat "$pr_cache_file")
+            fi
+        fi
+
+        # Fetch PR number if not cached (with tight timeout)
+        if [[ -z "$pr_number" ]]; then
+            pr_number=$(timeout 1 gh pr view --json number -q .number 2>/dev/null || true)
+            # Cache result (even empty = "no PR")
+            mkdir -p "$cache_dir"
+            printf '%s' "${pr_number:-none}" > "$pr_cache_file"
+        fi
+
+        if [[ -n "$pr_number" ]] && [[ "$pr_number" != "none" ]]; then
+            pr_segment=" · 🌿 ${branch} (#${pr_number})"
+        fi
+    fi
+fi
+
+# Output format: "🧠 [████░░] 72% · 🤖 Model · 💬 Topic · 🌿 branch 📁 /path"
+printf "${color}🧠 ${bar} ${percent}%%${reset} · 🤖 ${model_name}${name_segment}${pr_segment} 📁 ${cwd}"

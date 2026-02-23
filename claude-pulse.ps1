@@ -1,4 +1,4 @@
-# claude-pulse.ps1 v1.6.0: Real-time token usage for Claude Code status line (Windows)
+# claude-pulse.ps1 v1.7.0: Real-time token usage for Claude Code status line (Windows)
 # Uses billing API (transcript) for accurate FULL context usage
 # Falls back to native context_window when transcript unavailable
 # Displays current model name and AI-generated conversation names
@@ -68,28 +68,30 @@ if ($null -eq $input_tokens) {
 # Calculate percentage
 $percent = [math]::Floor(($input_tokens / $context_limit) * 100)
 
-# Format with K notation
-if ($input_tokens -ge 1000) {
-    $tokens_fmt = "{0}k" -f [math]::Floor($input_tokens / 1000)
-} else {
-    $tokens_fmt = $input_tokens
-}
+# Cap percentage for display
+$display_percent = [math]::Min($percent, 100)
 
-if ($context_limit -ge 1000) {
-    $limit_fmt = "{0}k" -f [math]::Floor($context_limit / 1000)
-} else {
-    $limit_fmt = $context_limit
-}
+# Progress bar (20-char, shows context consumed)
+$bar_width = 20
+$bar_filled = [math]::Floor(($display_percent * $bar_width + 50) / 100)
+if ($bar_filled -gt $bar_width) { $bar_filled = $bar_width }
+if ($bar_filled -lt 0) { $bar_filled = 0 }
+$bar_empty = $bar_width - $bar_filled
 
-# Color based on percentage
+$bar = "[" + ("█" * $bar_filled) + ("░" * $bar_empty) + "]"
+
+# Color based on usage (green=low, yellow=moderate, red=high)
 if ($percent -ge 80) {
-    $color = "`e[31m"  # Red
+    $color = "`e[31m"  # Red — running high
 } elseif ($percent -ge 50) {
-    $color = "`e[33m"  # Yellow
+    $color = "`e[33m"  # Yellow — moderate usage
 } else {
-    $color = "`e[32m"  # Green
+    $color = "`e[32m"  # Green — plenty of room
 }
 $reset = "`e[0m"
+
+# Cache directory for conversation names and PR lookups
+$cache_dir = Join-Path $HOME ".cache" "claude-pulse"
 
 # Generate a short name via AI APIs
 function Get-ConversationName {
@@ -154,7 +156,6 @@ $conv_name = ""
 if ($data.transcript_path -and $data.session_id) {
     $project_dir = Split-Path $data.transcript_path -Parent
     $sessions_index = Join-Path $project_dir "sessions-index.json"
-    $cache_dir = Join-Path $HOME ".cache" "claude-pulse"
     $cache_file = Join-Path $cache_dir "$($data.session_id).name"
 
     # Source 1: Session summary from sessions-index.json (set by /rename or conversation end)
@@ -219,11 +220,63 @@ if ($data.transcript_path -and $data.session_id) {
     }
 }
 
+# Truncate long conversation names
+if ($conv_name -and $conv_name.Length -gt 20) {
+    $conv_name = $conv_name.Substring(0, 18) + ".."
+}
+
 # Build name segment
 $name_segment = ""
 if ($conv_name) {
-    $name_segment = " · 💬 `"$conv_name`""
+    $name_segment = " · 💬 $conv_name"
 }
 
-# Output format: "🧠 64k/200k (32%) · Sonnet 4.5 · name 📁 /path" - all on one line
-Write-Host "${color}🧠 $tokens_fmt/$limit_fmt (${percent}%) · 🤖 ${model_name}${name_segment}${reset} 📁 $cwd"
+# Git branch detection
+$branch = ""
+try {
+    $branch = git -C $cwd branch --show-current 2>$null
+} catch {}
+
+# Git branch + PR number segment
+$pr_segment = ""
+if ($branch) {
+    $pr_segment = " · 🌿 $branch"
+
+    # PR lookup with caching (only if gh is available and not on main/master)
+    if ((Get-Command gh -ErrorAction SilentlyContinue) -and $branch -ne "main" -and $branch -ne "master") {
+        $cwd_hash = [BitConverter]::ToString(
+            [System.Security.Cryptography.MD5]::Create().ComputeHash(
+                [System.Text.Encoding]::UTF8.GetBytes($cwd)
+            )
+        ).Replace("-","").ToLower()
+        $pr_cache_file = Join-Path $cache_dir "pr-$cwd_hash-$branch"
+        $pr_number = ""
+
+        # Check cache (valid for 10 min)
+        if (Test-Path $pr_cache_file) {
+            $cache_age = ((Get-Date) - (Get-Item $pr_cache_file).LastWriteTime).TotalSeconds
+            if ($cache_age -lt 600) {
+                $pr_number = Get-Content $pr_cache_file -Raw
+            }
+        }
+
+        # Fetch PR number if not cached
+        if (-not $pr_number) {
+            try {
+                $pr_number = gh pr view --json number -q .number 2>$null
+            } catch {}
+            if (-not $pr_number) { $pr_number = "none" }
+            if (-not (Test-Path $cache_dir)) {
+                New-Item -ItemType Directory -Path $cache_dir -Force | Out-Null
+            }
+            Set-Content -Path $pr_cache_file -Value $pr_number -NoNewline
+        }
+
+        if ($pr_number -and $pr_number -ne "none") {
+            $pr_segment = " · 🌿 $branch (#$pr_number)"
+        }
+    }
+}
+
+# Output format: "🧠 [████░░] 72% · 🤖 Model · 💬 Topic · 🌿 branch 📁 /path"
+Write-Host "${color}🧠 $bar ${percent}%${reset} · 🤖 ${model_name}${name_segment}${pr_segment} 📁 $cwd"

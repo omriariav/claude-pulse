@@ -1,33 +1,36 @@
 # claude-pulse
 
-> Real-time token usage monitoring for Claude Code status line | **v1.6.0**
+> Real-time token usage monitoring for Claude Code status line | **v1.7.0**
 
 **claude-pulse** displays your current Claude Code token usage directly in your status line, helping you stay aware of context consumption without running `/context` manually.
 
-## New in v1.6.0: Active Session Names & Opus 4.6
+## New in v1.7.0: Context Bar, Branch/PR, Cleaner Topic UX
+
+- **Visual context bar** - 20-char progress bar shows context consumed at a glance
+- **Git branch + PR** - Shows current branch and open PR number (e.g., `🌿 feat/bar (#42)`)
+- **Cleaner topic names** - Removed noisy quotes, added 20-char truncation with `..`
+
+## Previous Updates
+
+### v1.6.0: Active Session Names & Opus 4.6
 
 - **Active session names** - Conversation names now work from the first message, even before `/rename` — inferred from transcript content via AI
 - **Opus 4.6 detection** - Correctly identifies `claude-opus-4-6` as "Opus 4.6" in the statusline
 - **1M context ready** - Dynamic detection handles Opus 4.6's extended context window automatically
 - **Refactored API calls** - AI provider logic extracted into reusable functions in both bash and PowerShell
 
-## Previous Updates
-
 ### v1.5.0: Conversation Names & Multi-Provider API Support
 
-- **Conversation names** - Shows AI-generated short names for each conversation (e.g., "Statusline Names")
+- **Conversation names** - Shows AI-generated short names for each conversation
 - **Multi-provider API** - Supports Anthropic, OpenAI, and Gemini APIs for name generation
 - **Smart fallback** - Extracts first 3 words from summary if no API key configured
-- **Visual clarity** - Added emojis (🤖 for model, 💬 for conversation) to distinguish elements
 
 ### v1.4.1: Dynamic Context Window Detection
 - **Dynamic context limits** - Automatically detects and displays correct context window size (200k, 1M, etc.)
-- **Mid-conversation updates** - Correctly updates when switching models during a conversation
 
 ### v1.4.0: Model Display
 - **Model display** - Shows current model in use (e.g., "Sonnet 4.5", "Opus 4.5", "Haiku 3.5")
 - **Single-line output** - Token usage, model name, and working directory on one compact line
-- **Accurate display** - Shows FULL context usage matching `/context` command (including MCP tools, system prompt, etc.)
 
 **Note:** >100% is normal when context exceeds the limit - Claude Code will auto-compact.
 
@@ -37,28 +40,32 @@ See [RELEASE.md](RELEASE.md) for full release notes.
 
 ## Features
 
+- ✅ **Visual context bar** - 20-char progress bar showing context consumed at a glance
 - ✅ **Accurate token counting** - Reads actual usage from Claude's API responses
 - ✅ **Model-aware limits** - Automatically detects context limits for different Claude models
 - ✅ **Model display** - Shows which Claude model you're using (e.g., "Sonnet 4.5", "Opus 4.5")
 - ✅ **Conversation names** - AI-generated short names for easy session identification
+- ✅ **Git branch + PR** - Shows current branch and open PR number
 - ✅ **Multi-provider API** - Works with Anthropic, OpenAI, or Gemini API keys
-- ✅ **Compact display** - Single line showing usage, model, conversation, and directory
-- ✅ **Color-coded warnings** - Green → Yellow → Red as you approach context limits
+- ✅ **Compact display** - Single line showing usage, model, conversation, branch, and directory
+- ✅ **Color-coded warnings** - Green → Yellow → Red as context usage increases
 - ✅ **Lightweight** - Pure bash/PowerShell script with minimal dependencies
 - ✅ **Inspired by [ccusage](https://github.com/ryoppippi/ccusage)** - Uses the same accurate parsing approach
 
 ## Demo
 
 ```
-🧠 72k/200k (36%) · 🤖 Sonnet 4.5 · 💬 "Statusline Names" 📁 /Users/you/Code/your-project
+🧠 [██░░░░░░░░░░░░░░░░░░] 10% · 🤖 Opus 4.6 · 💬 Topic Name · 🌿 feat/bar 📁 ~/Code/project
+🧠 [██████████████░░░░░░] 70% · 🤖 Sonnet 4.5 · 💬 Statusline Setup · 🌿 main 📁 ~/Code/project
+🧠 [███████████████████░] 95% · 🤖 Opus 4.6 · 💬 Debug Auth Bug · 🌿 fix/auth (#42) 📁 ~/Code/project
 ```
 
-Displays token usage (current/limit), percentage, current model, conversation name, and working directory all on one compact line.
+The bar shows **context consumed** — a small green bar means plenty of room, a nearly-full red bar means you're running high.
 
 Color changes based on usage:
-- 🟢 **Green** (0-49%): Plenty of context remaining
-- 🟡 **Yellow** (50-79%): Moderate usage
-- 🔴 **Red** (80-100%): High usage, consider compacting
+- 🟢 **Green** (<50% used): Plenty of room
+- 🟡 **Yellow** (50-79% used): Moderate usage
+- 🔴 **Red** (≥80% used): Running high, consider compacting
 
 ## Installation
 
