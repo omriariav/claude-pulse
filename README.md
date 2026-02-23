@@ -77,7 +77,7 @@ cd claude-pulse
 ./install.sh
 ```
 
-**Requirements**: `jq` (brew install jq / apt install jq)
+**Requirements**: `jq` (brew install jq / apt install jq), optionally `gh` for PR numbers
 
 ### Windows (PowerShell)
 
@@ -125,6 +125,7 @@ cd claude-pulse
 - **macOS/Linux**: `jq` JSON parser
   - macOS: `brew install jq`
   - Linux: `sudo apt-get install jq`
+- **Optional**: `gh` CLI for PR number display (`brew install gh` / `apt install gh`)
 - **Windows**: PowerShell (included in Windows)
 
 ## How It Works

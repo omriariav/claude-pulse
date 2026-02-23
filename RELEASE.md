@@ -9,6 +9,9 @@
 - **Visual context bar**: 20-character progress bar shows context **consumed** — bar fills up as you use more context, color shifts from green to yellow to red
 - **Git branch + PR number**: Shows current branch (e.g., `🌿 feat/bar`) and open PR number (e.g., `🌿 fix/auth (#42)`) with 10-minute caching to avoid slow API calls
 - **Cleaner topic names**: Removed noisy quotes around conversation names, added 20-char truncation with `..` for long names
+- **macOS-compatible timeout**: PR lookup uses portable background-process timeout instead of GNU `timeout`
+- **Atomic cache writes**: All cache files written via temp+rename to prevent partial reads
+- **Bash/PowerShell parity**: Consistent rounding at color thresholds across platforms
 
 ### Display Format
 
