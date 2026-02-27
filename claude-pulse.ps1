@@ -40,11 +40,16 @@ if ($null -ne $data.context_window -and $null -ne $data.context_window.context_w
 if ($data.transcript_path -and (Test-Path $data.transcript_path)) {
     $session_id = $data.session_id
     $lines = Get-Content $data.transcript_path | ForEach-Object { $_ | ConvertFrom-Json }
-    $usage = $lines | Where-Object { $_.sessionId -eq $session_id -and $_.message.usage } | Select-Object -Last 1
-    if ($usage) {
-        $u = $usage.message.usage
+    # Filter to entries with usage or compact_boundary markers, then check the most recent
+    $relevant = $lines | Where-Object {
+        $_.sessionId -eq $session_id -and (($_.message.usage) -or ($_.subtype -eq "compact_boundary"))
+    }
+    $last = $relevant | Select-Object -Last 1
+    if ($last -and $last.subtype -ne "compact_boundary" -and $last.message.usage) {
+        $u = $last.message.usage
         $input_tokens = ($u.input_tokens ?? 0) + ($u.cache_creation_input_tokens ?? 0) + ($u.cache_read_input_tokens ?? 0)
     }
+    # If last relevant entry is compact_boundary, skip transcript (stale) — fall through to context_window
 }
 
 # Fallback: Native context_window (conversation only, missing MCP/system overhead)

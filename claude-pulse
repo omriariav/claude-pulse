@@ -67,12 +67,13 @@ if [[ -f "$transcript_path" ]]; then
         reverse_cmd="tail -r"
     fi
     input_tokens=$($reverse_cmd "$transcript_path" 2>/dev/null | jq --arg sid "$session_id" -s '
-        map(select(.sessionId == $sid and .message.usage)) |
-        if length > 0 then
+        map(select(.sessionId == $sid and ((.message.usage) or (.subtype == "compact_boundary")))) |
+        if length == 0 then null
+        elif .[0].subtype == "compact_boundary" then null
+        elif .[0].message.usage then
             .[0].message.usage |
             ((.input_tokens // 0) + (.cache_creation_input_tokens // 0) + (.cache_read_input_tokens // 0))
-        else
-            null
+        else null
         end
     ' 2>/dev/null)
 fi
