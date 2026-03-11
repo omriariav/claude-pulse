@@ -56,6 +56,13 @@ if [[ "$actual_limit" != "null" ]] && [[ -n "$actual_limit" ]]; then
     context_limit="$actual_limit"
 fi
 
+# Format context limit for display (200000 → "200k", 1000000 → "1M")
+if (( context_limit >= 1000000 )) && (( context_limit % 1000000 == 0 )); then
+    context_label="$((context_limit / 1000000))M"
+else
+    context_label="$((context_limit / 1000))k"
+fi
+
 # Primary: Billing API from transcript (includes ALL context: messages + system + MCP tools)
 # Sum: input_tokens + cache_creation_input_tokens + cache_read_input_tokens
 # This matches what /context shows
@@ -294,4 +301,4 @@ if [[ -n "$branch" ]]; then
 fi
 
 # Output format: "🧠 [████░░] 72% · 🤖 Model · 💬 Topic · 🌿 branch 📁 /path"
-printf "${color}🧠 ${bar} ${percent}%%${reset} · 🤖 ${model_name}${name_segment}${pr_segment} 📁 ${cwd}"
+printf "${color}🧠 ${bar} ${percent}%%${reset} · 🤖 ${model_name} (${context_label})${name_segment}${pr_segment} 📁 ${cwd}"
