@@ -1,5 +1,35 @@
 # Release Notes
 
+## v1.7.1 - Context Window Label
+
+**Released:** March 11, 2026
+
+### What's New
+
+- **Context window size in status line**: Shows `(200k)` or `(1M)` next to the model name, making it easy to distinguish standard vs extended context sessions at a glance
+
+### Display Format
+
+Before (v1.7.0):
+```
+🧠 [██████░░░░░░░░░░░░░░] 32% · 🤖 Opus 4.6 · 💬 Topic Name · 🌿 feat/bar 📁 ~/Code/project
+```
+
+After (v1.7.1):
+```
+🧠 [██████░░░░░░░░░░░░░░] 32% · 🤖 Opus 4.6 (1M) · 💬 Topic Name · 🌿 feat/bar 📁 ~/Code/project
+```
+
+### Upgrade
+
+```bash
+cd claude-pulse
+git pull
+./install.sh
+```
+
+---
+
 ## v1.7.0 - Context Bar, Branch/PR, Cleaner Topic UX
 
 **Released:** February 23, 2026

@@ -1,16 +1,20 @@
 # claude-pulse
 
-> Real-time token usage monitoring for Claude Code status line | **v1.7.0**
+> Real-time token usage monitoring for Claude Code status line | **v1.7.1**
 
 **claude-pulse** displays your current Claude Code token usage directly in your status line, helping you stay aware of context consumption without running `/context` manually.
 
-## New in v1.7.0: Context Bar, Branch/PR, Cleaner Topic UX
+## New in v1.7.1: Context Window Label
+
+- **Context size in status line** - Shows `(200k)` or `(1M)` next to the model name so you can tell at a glance whether you're in a standard or extended context session
+
+## Previous Updates
+
+### v1.7.0: Context Bar, Branch/PR, Cleaner Topic UX
 
 - **Visual context bar** - 20-char progress bar shows context consumed at a glance
 - **Git branch + PR** - Shows current branch and open PR number (e.g., `🌿 feat/bar (#42)`)
 - **Cleaner topic names** - Removed noisy quotes, added 20-char truncation with `..`
-
-## Previous Updates
 
 ### v1.6.0: Active Session Names & Opus 4.6
 
@@ -55,9 +59,9 @@ See [RELEASE.md](RELEASE.md) for full release notes.
 ## Demo
 
 ```
-🧠 [██░░░░░░░░░░░░░░░░░░] 10% · 🤖 Opus 4.6 · 💬 Topic Name · 🌿 feat/bar 📁 ~/Code/project
-🧠 [██████████████░░░░░░] 70% · 🤖 Sonnet 4.5 · 💬 Statusline Setup · 🌿 main 📁 ~/Code/project
-🧠 [███████████████████░] 95% · 🤖 Opus 4.6 · 💬 Debug Auth Bug · 🌿 fix/auth (#42) 📁 ~/Code/project
+🧠 [██░░░░░░░░░░░░░░░░░░] 10% · 🤖 Opus 4.6 (1M) · 💬 Topic Name · 🌿 feat/bar 📁 ~/Code/project
+🧠 [██████████████░░░░░░] 70% · 🤖 Sonnet 4.5 (200k) · 💬 Statusline Setup · 🌿 main 📁 ~/Code/project
+🧠 [███████████████████░] 95% · 🤖 Opus 4.6 (200k) · 💬 Debug Auth Bug · 🌿 fix/auth (#42) 📁 ~/Code/project
 ```
 
 The bar shows **context consumed** — a small green bar means plenty of room, a nearly-full red bar means you're running high.
