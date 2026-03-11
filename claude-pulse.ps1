@@ -34,6 +34,13 @@ if ($null -ne $data.context_window -and $null -ne $data.context_window.context_w
     $context_limit = $data.context_window.context_window_size
 }
 
+# Format context limit for display (200000 → "200k", 1000000 → "1M")
+if ($context_limit -ge 1000000 -and $context_limit % 1000000 -eq 0) {
+    $context_label = "$([math]::Floor($context_limit / 1000000))M"
+} else {
+    $context_label = "$([math]::Floor($context_limit / 1000))k"
+}
+
 # Primary: Billing API from transcript (includes ALL context: messages + system + MCP tools)
 # Sum: input_tokens + cache_creation_input_tokens + cache_read_input_tokens
 # This matches what /context shows
@@ -288,4 +295,4 @@ if ($branch) {
 }
 
 # Output format: "🧠 [████░░] 72% · 🤖 Model · 💬 Topic · 🌿 branch 📁 /path"
-Write-Host "${color}🧠 $bar ${percent}%${reset} · 🤖 ${model_name}${name_segment}${pr_segment} 📁 $cwd"
+Write-Host "${color}🧠 $bar ${percent}%${reset} · 🤖 ${model_name} (${context_label})${name_segment}${pr_segment} 📁 $cwd"
