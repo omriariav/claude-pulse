@@ -181,23 +181,34 @@ cities_match_filter() {
 }
 
 # Atomic singleton lock (mkdir is atomic — only one process wins)
+# PID stored inside lock dir so ownership is coupled with the lock
 LOCK_DIR="${STATE_DIR}/daemon.lock"
+LOCK_PID="${LOCK_DIR}/pid"
 if ! mkdir "$LOCK_DIR" 2>/dev/null; then
-    # Lock exists — check if holder is still alive
-    if [[ -f "$PID_FILE" ]]; then
-        existing_pid=$(cat "$PID_FILE" 2>/dev/null)
+    # Lock exists — check if holder is still alive via pid inside lock
+    if [[ -f "$LOCK_PID" ]]; then
+        existing_pid=$(cat "$LOCK_PID" 2>/dev/null)
         if [[ -n "$existing_pid" ]] && kill -0 "$existing_pid" 2>/dev/null; then
             exit 0
         fi
     fi
-    # Stale lock — remove and retry
+    # Stale lock (dead process or no pid yet) — wait briefly then check again
+    sleep 1
+    if [[ -f "$LOCK_PID" ]]; then
+        existing_pid=$(cat "$LOCK_PID" 2>/dev/null)
+        if [[ -n "$existing_pid" ]] && kill -0 "$existing_pid" 2>/dev/null; then
+            exit 0
+        fi
+    fi
+    # Truly stale — reclaim
     rm -rf "$LOCK_DIR"
     if ! mkdir "$LOCK_DIR" 2>/dev/null; then
         exit 0
     fi
 fi
 
-# We hold the lock — write PID (lock dir stays for daemon lifetime)
+# We hold the lock — write PID immediately (inside lock dir + state dir)
+echo $$ > "$LOCK_PID"
 echo $$ > "$PID_FILE"
 log "Daemon started (PID $$, mode=${RED_ALERT_MODE:-normal})"
 
