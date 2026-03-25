@@ -494,16 +494,25 @@ fi
 alert_indicator=""
 if [[ -n "$RED_ALERT_CITIES" ]] || [[ -n "$RED_ALERT_MODE" ]]; then
     _pid_file="${RED_ALERT_PID_FILE:-$HOME/.local/state/claude-pulse/red_alert_daemon.pid}"
+    _debug_suffix=""
+    if [[ -n "$RED_ALERT_DEBUG" ]]; then
+        _daemon_count=$(pgrep -f "red-alert-daemon" 2>/dev/null | wc -l | tr -d ' ')
+        _debug_suffix=" (${_daemon_count})"
+    fi
     if [[ -f "$_pid_file" ]] && kill -0 "$(cat "$_pid_file" 2>/dev/null)" 2>/dev/null; then
         if [[ -z "$alert_segment" ]]; then
-            alert_indicator="\033[32m🟢 Alerts daemon ON${reset}"
+            alert_indicator="\033[32m🟢 Alerts daemon ON${_debug_suffix}${reset}"
         fi
     else
-        # Auto-restart daemon via launchctl (only if the installed daemon isn't running)
-        if ! pgrep -f "$HOME/.claude/red-alert-daemon.sh" >/dev/null 2>&1; then
+        # Only restart if truly zero daemons (avoids spawning duplicates)
+        _daemon_count=$(pgrep -f "red-alert-daemon" 2>/dev/null | wc -l | tr -d ' ')
+        if [[ "$_daemon_count" == "0" ]]; then
             launchctl kickstart "gui/$(id -u)/com.claude-pulse.red-alert" 2>/dev/null
         fi
-        alert_indicator="\033[90m🔕 Alerts daemon not running${reset}"
+        if [[ -n "$RED_ALERT_DEBUG" ]]; then
+            _debug_suffix=" (${_daemon_count})"
+        fi
+        alert_indicator="\033[90m🔕 Alerts daemon not running${_debug_suffix}${reset}"
     fi
 fi
 

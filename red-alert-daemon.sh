@@ -175,6 +175,15 @@ cities_match_filter() {
     return 1
 }
 
+# Check if another daemon is already running (prevent duplicates)
+if [[ -f "$PID_FILE" ]]; then
+    existing_pid=$(cat "$PID_FILE" 2>/dev/null)
+    if [[ -n "$existing_pid" ]] && [[ "$existing_pid" != "$$" ]] && kill -0 "$existing_pid" 2>/dev/null; then
+        log "Another daemon already running (PID $existing_pid), exiting"
+        exit 0
+    fi
+fi
+
 # Write PID file (used by statusline to show 🔔 indicator)
 echo $$ > "$PID_FILE"
 log "Daemon started (PID $$, mode=${RED_ALERT_MODE:-normal})"
@@ -182,7 +191,7 @@ log "Daemon started (PID $$, mode=${RED_ALERT_MODE:-normal})"
 mock_index=0
 
 HEARTBEAT_FILE="${STATE_DIR}/heartbeat"
-HEARTBEAT_TIMEOUT="${RED_ALERT_HEARTBEAT_TIMEOUT:-30}"
+HEARTBEAT_TIMEOUT="${RED_ALERT_HEARTBEAT_TIMEOUT:-120}"
 DAEMON_START_TIME=$(date +%s)
 
 # Touch heartbeat on startup to prevent immediate exit from stale file
@@ -287,7 +296,7 @@ while true; do
             ;;
         1|2|3|4|5|6|7|8|9|10|11|12|101|102|103|104|105|106|107)
             # Active alert or drill
-            log "ALERT cat=$cat_val id=$alert_id cities=$cities"
+            log "ALERT cat=$cat_val title=$title id=$alert_id cities=$cities"
             cities_en=$(translate_cities "$cities")
             write_state "$(build_state "$alert_id" "$cat_val" "$title" "$cities" "$cities_en" "$now" 0)"
             if cities_match_filter "$cities" "$cities_en"; then
