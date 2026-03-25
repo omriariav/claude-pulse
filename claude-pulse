@@ -303,6 +303,9 @@ fi
 # Red Alert: read-only — daemon is managed by launchd (macOS) or systemd (Linux)
 alert_segment=""
 if [[ -n "$RED_ALERT_CITIES" ]] || [[ -n "$RED_ALERT_MODE" ]]; then
+    # Touch heartbeat so daemon knows a statusline is active
+    touch "$HOME/.local/state/claude-pulse/heartbeat" 2>/dev/null
+
     # Read alert state
     _alert_state_file="${RED_ALERT_STATE_FILE:-$HOME/.local/state/claude-pulse/red_alert_state.json}"
     if [[ -f "$_alert_state_file" ]]; then
