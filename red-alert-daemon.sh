@@ -222,16 +222,30 @@ mock_index=0
 HEARTBEAT_FILE="${STATE_DIR}/heartbeat"
 HEARTBEAT_TIMEOUT="${RED_ALERT_HEARTBEAT_TIMEOUT:-300}"
 DAEMON_START_TIME=$(date +%s)
+PGREP_MISS_COUNT=0
+PGREP_MISS_THRESHOLD=3
 
 # Touch heartbeat on startup to prevent immediate exit from stale file
 touch "$HEARTBEAT_FILE" 2>/dev/null
 
 while true; do
     now=$(date +%s)
-
-    # Exit if no statusline has refreshed recently (all Claude Code instances closed)
-    # Skip check during first HEARTBEAT_TIMEOUT seconds (give statusline time to start)
     daemon_uptime=$(( now - DAEMON_START_TIME ))
+
+    # Fast-path: check if Claude Code process exists (after initial grace period)
+    if (( daemon_uptime > 30 )); then
+        if pgrep -x "claude" >/dev/null 2>&1; then
+            PGREP_MISS_COUNT=0
+        else
+            PGREP_MISS_COUNT=$(( PGREP_MISS_COUNT + 1 ))
+            if (( PGREP_MISS_COUNT >= PGREP_MISS_THRESHOLD )); then
+                log "No Claude Code process for ${PGREP_MISS_COUNT} checks, exiting"
+                exit 0
+            fi
+        fi
+    fi
+
+    # Fallback: heartbeat timeout (catches cases where pgrep doesn't work)
     if (( daemon_uptime > HEARTBEAT_TIMEOUT )); then
         if [[ -f "$HEARTBEAT_FILE" ]]; then
             heartbeat_age=$(( now - $(stat -f%m "$HEARTBEAT_FILE" 2>/dev/null || stat -c%Y "$HEARTBEAT_FILE" 2>/dev/null || echo "$now") ))
