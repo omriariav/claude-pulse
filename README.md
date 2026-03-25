@@ -1,10 +1,16 @@
 # claude-pulse
 
-> Real-time token usage monitoring for Claude Code status line | **v2.1.0**
+> Real-time token usage monitoring for Claude Code status line | **v2.1.1**
 
 **claude-pulse** displays your current Claude Code token usage directly in your status line, helping you stay aware of context consumption without running `/context` manually.
 
-## New in v2.1.0: Rate Limits + Alert Bug Fixes
+## New in v2.1.1: Sound Only for Actionable Alerts
+
+- **Sound narrowed to missiles + aircraft only** - Only cat 1 (missiles) and cat 2 (hostile aircraft) play `go.m4a`. Pre-alert (cat 14) plays `early.m4a`. All other categories display visually but stay silent.
+
+## Previous Updates
+
+### v2.1.0: Rate Limits + Alert Bug Fixes
 
 - **Rate limit display** - Shows `5h: 23% · 7d: 5%` on 2nd line with color-coded 5h usage (Pro/Max only)
 - **Sound city filtering** - Alert sounds now only play for cities matching your `RED_ALERT_CITIES` filter

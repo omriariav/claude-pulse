@@ -1,5 +1,30 @@
 # Release Notes
 
+## v2.1.1 - Sound Only for Actionable Alerts
+
+**Released:** March 25, 2026
+
+### What's Changed
+
+- Sound now only plays for **cat 1 (missiles)** and **cat 2 (hostile aircraft)** → `go.m4a`
+- **Cat 14 (pre-alert)** continues to play `early.m4a`
+- All other categories (earthquake, hazmat, drills, unknown cat 10, etc.) still display visually but are silent
+- No changes to statusline display — all categories still render
+
+### Why
+
+Category 10 (undocumented) appeared during today's alerts with the same cities as missile alerts, triggering unnecessary sounds. Only cat 1 and 2 require immediate action (go to shelter).
+
+### Upgrade
+
+```bash
+cd claude-pulse
+git pull
+cp red-alert-daemon.sh ~/.claude/red-alert-daemon.sh
+```
+
+---
+
 ## v2.1.0 - Rate Limits + Alert Bug Fixes
 
 **Released:** March 25, 2026
