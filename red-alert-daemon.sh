@@ -233,7 +233,8 @@ while true; do
     daemon_uptime=$(( now - DAEMON_START_TIME ))
 
     # Fast-path: check if Claude Code process exists (after initial grace period)
-    if (( daemon_uptime > 30 )); then
+    # Only use pgrep if available — fall through to heartbeat otherwise
+    if (( daemon_uptime > 30 )) && command -v pgrep >/dev/null 2>&1; then
         if pgrep -x "claude" >/dev/null 2>&1; then
             PGREP_MISS_COUNT=0
         else
