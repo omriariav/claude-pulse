@@ -105,17 +105,25 @@ log "Daemon started (PID $$, mode=${RED_ALERT_MODE:-normal})"
 mock_index=0
 
 HEARTBEAT_FILE="${STATE_DIR}/heartbeat"
-HEARTBEAT_TIMEOUT="${RED_ALERT_HEARTBEAT_TIMEOUT:-120}"
+HEARTBEAT_TIMEOUT="${RED_ALERT_HEARTBEAT_TIMEOUT:-180}"
+DAEMON_START_TIME=$(date +%s)
+
+# Touch heartbeat on startup to prevent immediate exit from stale file
+touch "$HEARTBEAT_FILE" 2>/dev/null
 
 while true; do
     now=$(date +%s)
 
     # Exit if no statusline has refreshed recently (all Claude Code instances closed)
-    if [[ -f "$HEARTBEAT_FILE" ]]; then
-        heartbeat_age=$(( now - $(stat -f%m "$HEARTBEAT_FILE" 2>/dev/null || stat -c%Y "$HEARTBEAT_FILE" 2>/dev/null || echo "$now") ))
-        if (( heartbeat_age > HEARTBEAT_TIMEOUT )); then
-            log "No statusline heartbeat for ${heartbeat_age}s, exiting"
-            exit 0
+    # Skip check during first HEARTBEAT_TIMEOUT seconds (give statusline time to start)
+    daemon_uptime=$(( now - DAEMON_START_TIME ))
+    if (( daemon_uptime > HEARTBEAT_TIMEOUT )); then
+        if [[ -f "$HEARTBEAT_FILE" ]]; then
+            heartbeat_age=$(( now - $(stat -f%m "$HEARTBEAT_FILE" 2>/dev/null || stat -c%Y "$HEARTBEAT_FILE" 2>/dev/null || echo "$now") ))
+            if (( heartbeat_age > HEARTBEAT_TIMEOUT )); then
+                log "No statusline heartbeat for ${heartbeat_age}s, exiting"
+                exit 0
+            fi
         fi
     fi
 

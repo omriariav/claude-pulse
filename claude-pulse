@@ -304,6 +304,7 @@ fi
 alert_segment=""
 if [[ -n "$RED_ALERT_CITIES" ]] || [[ -n "$RED_ALERT_MODE" ]]; then
     # Touch heartbeat so daemon knows a statusline is active
+    mkdir -p "$HOME/.local/state/claude-pulse" 2>/dev/null
     touch "$HOME/.local/state/claude-pulse/heartbeat" 2>/dev/null
 
     # Read alert state
