@@ -300,5 +300,163 @@ if [[ -n "$branch" ]]; then
     fi
 fi
 
+# Red Alert: read-only — daemon is managed by launchd (macOS) or systemd (Linux)
+alert_segment=""
+if [[ -n "$RED_ALERT_CITIES" ]] || [[ -n "$RED_ALERT_MODE" ]]; then
+    # Read alert state
+    _alert_state_file="${RED_ALERT_STATE_FILE:-/tmp/red_alert_state.json}"
+    if [[ -f "$_alert_state_file" ]]; then
+        alert_data=$(cat "$_alert_state_file" 2>/dev/null)
+        alert_cat=$(echo "$alert_data" | jq -r '.cat // ""' 2>/dev/null)
+        alert_last_seen=$(echo "$alert_data" | jq -r '.last_seen_unix // 0' 2>/dev/null)
+        alert_cleared=$(echo "$alert_data" | jq -r '.cleared_unix // 0' 2>/dev/null)
+        now=$(date +%s)
+
+        # Determine if alert is active (within persistence windows)
+        alert_active=false
+        if [[ -n "$alert_cat" ]] && [[ "$alert_cat" != "" ]] && [[ "$alert_cat" != "null" ]]; then
+            age=$(( now - alert_last_seen ))
+            case "$alert_cat" in
+                13) # All clear: show for 15s
+                    (( age <= 15 )) && alert_active=true ;;
+                14) # Pre-alert: show for 20 min
+                    (( age <= 1200 )) && alert_active=true ;;
+                *) # Active alerts: show for 60s
+                    (( age <= 60 )) && alert_active=true ;;
+            esac
+        fi
+
+        if [[ "$alert_active" == "true" ]]; then
+            # Get alert icon and label
+            case "$alert_cat" in
+                1)   alert_icon="🚀"; alert_label="MISSILES" ;;
+                2)   alert_icon="✈️";  alert_label="AIRCRAFT" ;;
+                3)   alert_icon="🌍"; alert_label="EARTHQUAKE" ;;
+                4)   alert_icon="🌊"; alert_label="TSUNAMI" ;;
+                5)   alert_icon="☢️";  alert_label="RADIOLOGICAL" ;;
+                6)   alert_icon="☣️";  alert_label="HAZMAT" ;;
+                7)   alert_icon="🔫"; alert_label="INFILTRATION" ;;
+                8|9|10|11|12) alert_icon="⚠️"; alert_label="ALERT" ;;
+                13)  alert_icon="✅"; alert_label="ALL CLEAR" ;;
+                14)  alert_icon="⚠️";  alert_label="PRE-ALERT" ;;
+                101|102|103|104|105|106|107)
+                     alert_icon="🔔"; alert_label="DRILL" ;;
+                *)   alert_icon="⚠️";  alert_label="ALERT" ;;
+            esac
+
+            # Get all cities from state (prefer English, fall back to Hebrew)
+            all_cities=$(echo "$alert_data" | jq -r 'if (.cities_en // [] | length) > 0 then .cities_en[]? else .cities[]? end' 2>/dev/null)
+
+            # City filtering (unless mode=all)
+            if [[ "$RED_ALERT_MODE" == "all" ]] || [[ -z "$RED_ALERT_CITIES" ]]; then
+                filtered_cities="$all_cities"
+            else
+                filtered_cities=""
+                IFS=',' read -ra city_filters <<< "$RED_ALERT_CITIES"
+                while IFS= read -r city; do
+                    [[ -z "$city" ]] && continue
+                    for filter in "${city_filters[@]}"; do
+                        filter=$(echo "$filter" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | tr '[:upper:]' '[:lower:]')
+                        # Map English city names to Hebrew
+                        hebrew=""
+                        case "$filter" in
+                            "tel aviv") hebrew="תל אביב" ;;
+                            "ramat gan") hebrew="רמת גן" ;;
+                            "jerusalem") hebrew="ירושלים" ;;
+                            "haifa") hebrew="חיפה" ;;
+                            "beer sheva"|"beersheba"|"beersheva") hebrew="באר שבע" ;;
+                            "ashdod") hebrew="אשדוד" ;;
+                            "ashkelon") hebrew="אשקלון" ;;
+                            "netanya") hebrew="נתניה" ;;
+                            "herzliya") hebrew="הרצליה" ;;
+                            "petah tikva") hebrew="פתח תקווה" ;;
+                            "rishon lezion") hebrew="ראשון לציון" ;;
+                            "holon") hebrew="חולון" ;;
+                            "bat yam") hebrew="בת ים" ;;
+                            "bnei brak") hebrew="בני ברק" ;;
+                            "rehovot") hebrew="רחובות" ;;
+                            "kfar saba") hebrew="כפר סבא" ;;
+                            "ra'anana"|"raanana") hebrew="רעננה" ;;
+                            "modiin") hebrew="מודיעין" ;;
+                            "eilat") hebrew="אילת" ;;
+                            "nazareth") hebrew="נצרת" ;;
+                            "acre"|"akko") hebrew="עכו" ;;
+                            "tiberias") hebrew="טבריה" ;;
+                            "sderot") hebrew="שדרות" ;;
+                            "kiryat shmona") hebrew="קריית שמונה" ;;
+                            "nahariya") hebrew="נהריה" ;;
+                            "lod") hebrew="לוד" ;;
+                            "ramla") hebrew="רמלה" ;;
+                            "givatayim") hebrew="גבעתיים" ;;
+                            "hod hasharon") hebrew="הוד השרון" ;;
+                        esac
+                        # Check Hebrew match (mapped or direct substring)
+                        if [[ -n "$hebrew" ]] && [[ "$city" == *"$hebrew"* ]]; then
+                            filtered_cities="${filtered_cities}${city}"$'\n'
+                            break
+                        fi
+                        # Fuzzy match: substring on city name (works for both broad and zone-specific)
+                        # "tel aviv" → all zones, "city center" → just that zone, "south" → south zone
+                        city_lower=$(echo "$city" | tr '[:upper:]' '[:lower:]')
+                        if [[ "$city_lower" == *"$filter"* ]] || [[ "$city" == *"$filter"* ]]; then
+                            filtered_cities="${filtered_cities}${city}"$'\n'
+                            break
+                        fi
+                    done
+                done <<< "$all_cities"
+                filtered_cities=$(echo "$filtered_cities" | sed '/^$/d')
+            fi
+
+            # Build alert display if we have matching cities (or it's all-clear/pre-alert)
+            if [[ -n "$filtered_cities" ]] || [[ "$alert_cat" == "13" ]] || [[ "$alert_cat" == "14" ]]; then
+                city_count=$(echo "$filtered_cities" | grep -c .)
+                red_bg="\033[41;97m"
+                green_bg="\033[42;97m"
+                yellow_bg="\033[43;30m"
+
+                # Check if this is a mock/test alert
+                alert_test_prefix=""
+                alert_id_val=$(echo "$alert_data" | jq -r '.alert_id // ""' 2>/dev/null)
+                if [[ "$alert_id_val" == mock_* ]]; then
+                    alert_test_prefix="TEST "
+                fi
+
+                # All clear: green background, calm
+                if [[ "$alert_cat" == "13" ]]; then
+                    alert_segment="\n\033[32m${alert_icon} ${alert_test_prefix}All clear${reset}"
+                # Pre-alert: yellow background, warning
+                elif [[ "$alert_cat" == "14" ]]; then
+                    alert_segment="\n${yellow_bg}${alert_icon} ${alert_test_prefix}Pre-alert — be prepared${reset}"
+                elif [[ "$city_count" -le 3 ]]; then
+                    city_display=$(echo "$filtered_cities" | tr '\n' '·' | sed 's/·$//;s/·/ · /g')
+                    if [[ -n "$city_display" ]]; then
+                        alert_segment="\n${red_bg}${alert_icon} ${alert_test_prefix}${alert_label} · ${city_display}${reset}"
+                    else
+                        alert_segment="\n${red_bg}${alert_icon} ${alert_test_prefix}${alert_label}${reset}"
+                    fi
+                else
+                    # Cycle through cities for display
+                    cycle_index=$(( (now / 2) % city_count ))
+                    cycling_city=$(echo "$filtered_cities" | sed -n "$((cycle_index + 1))p")
+                    alert_segment="\n${red_bg}${alert_icon} ${alert_test_prefix}${alert_label} · ${city_count} cities · ${cycling_city}${reset}"
+                fi
+            fi
+        fi
+    fi
+fi
+
+# Alert status on 2nd line
+# No config → nothing. Config + daemon running, no alert → 🔔 green line. Active alert → 🚀 red line. No daemon → 🔕 grey line.
+if [[ -n "$RED_ALERT_CITIES" ]] || [[ -n "$RED_ALERT_MODE" ]]; then
+    _pid_file="${RED_ALERT_PID_FILE:-/tmp/red_alert_daemon.pid}"
+    if [[ -f "$_pid_file" ]] && kill -0 "$(cat "$_pid_file" 2>/dev/null)" 2>/dev/null; then
+        if [[ -z "$alert_segment" ]]; then
+            alert_segment="\n\033[32m🟢 Alerts daemon ON${reset}"
+        fi
+    else
+        alert_segment="\n\033[90m🔕 Alerts daemon not running${reset}"
+    fi
+fi
+
 # Output format: "🧠 [████░░] 72% · 🤖 Model · 💬 Topic · 🌿 branch 📁 /path"
-printf "${color}🧠 ${bar} ${percent}%%${reset} · 🤖 ${model_name} (${context_label})${name_segment}${pr_segment} 📁 ${cwd}"
+printf "${color}🧠 ${bar} ${percent}%%${reset} · 🤖 ${model_name} (${context_label})${name_segment}${pr_segment} 📁 ${cwd}${alert_segment}"

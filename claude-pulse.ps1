@@ -294,5 +294,147 @@ if ($branch) {
     }
 }
 
+# Red Alert: auto-start daemon and read alert state
+$alert_segment = ""
+if ($env:RED_ALERT_CITIES -or $env:RED_ALERT_MODE) {
+    # Auto-start daemon if not running
+    $daemon_script = Join-Path (Split-Path $MyInvocation.MyCommand.Path -Parent) "red-alert-daemon.sh"
+    if (Test-Path $daemon_script) {
+        $daemon_running = $false
+        $pid_file = if ($IsWindows) { Join-Path $env:TEMP "red_alert_daemon.pid" } else { "/tmp/red_alert_daemon.pid" }
+        if (Test-Path $pid_file) {
+            $daemon_pid = Get-Content $pid_file -ErrorAction SilentlyContinue
+            if ($daemon_pid) {
+                try { $proc = Get-Process -Id $daemon_pid -ErrorAction Stop; $daemon_running = $true } catch {}
+            }
+        }
+        if (-not $daemon_running) {
+            # Use Mutex as atomic lock to prevent multiple launches
+            $mutex = New-Object System.Threading.Mutex($false, "Global\RedAlertDaemonLock")
+            $acquired = $false
+            try {
+                $acquired = $mutex.WaitOne(0)
+                if ($acquired) {
+                    # Re-check PID after acquiring lock
+                    $still_needed = $true
+                    if (Test-Path $pid_file) {
+                        $daemon_pid = Get-Content $pid_file -ErrorAction SilentlyContinue
+                        if ($daemon_pid) {
+                            try { Get-Process -Id $daemon_pid -ErrorAction Stop; $still_needed = $false } catch {}
+                        }
+                    }
+                    if ($still_needed) {
+                        if ($IsWindows) {
+                            Start-Process -NoNewWindow -FilePath "bash" -ArgumentList $daemon_script -RedirectStandardOutput "NUL" -RedirectStandardError "NUL"
+                        } else {
+                            & nohup $daemon_script >> /tmp/red_alert_daemon.log 2>&1 &
+                        }
+                    }
+                }
+            } finally {
+                if ($acquired) { $mutex.ReleaseMutex() }
+                $mutex.Dispose()
+            }
+        }
+    }
+
+    # Read alert state
+    $state_file = if ($IsWindows) { Join-Path $env:TEMP "red_alert_state.json" } else { "/tmp/red_alert_state.json" }
+    if (Test-Path $state_file) {
+        $alert_data = Get-Content $state_file -Raw | ConvertFrom-Json
+        $alert_cat = $alert_data.cat
+        $alert_last_seen = [int]$alert_data.last_seen_unix
+        $now = [int][DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
+
+        # Determine if alert is active (within persistence windows)
+        $alert_active = $false
+        if ($alert_cat -and $alert_cat -ne "" -and $alert_cat -ne "null") {
+            $age = $now - $alert_last_seen
+            switch ($alert_cat) {
+                "13" { if ($age -le 15) { $alert_active = $true } }    # All clear: 15s
+                "14" { if ($age -le 1200) { $alert_active = $true } }  # Pre-alert: 20 min
+                default { if ($age -le 60) { $alert_active = $true } } # Active: 60s
+            }
+        }
+
+        if ($alert_active) {
+            # Get alert icon and label
+            switch ($alert_cat) {
+                "1"   { $alert_icon = "🚀"; $alert_label = "MISSILES" }
+                "2"   { $alert_icon = "✈️";  $alert_label = "AIRCRAFT" }
+                "3"   { $alert_icon = "🌍"; $alert_label = "EARTHQUAKE" }
+                "4"   { $alert_icon = "🌊"; $alert_label = "TSUNAMI" }
+                "5"   { $alert_icon = "☢️";  $alert_label = "RADIOLOGICAL" }
+                "6"   { $alert_icon = "☣️";  $alert_label = "HAZMAT" }
+                "7"   { $alert_icon = "🔫"; $alert_label = "INFILTRATION" }
+                "13"  { $alert_icon = "✅"; $alert_label = "ALL CLEAR" }
+                "14"  { $alert_icon = "⚠️";  $alert_label = "PRE-ALERT" }
+                { $_ -match '^10[1-7]$' } { $alert_icon = "🔔"; $alert_label = "DRILL" }
+                default { $alert_icon = "⚠️";  $alert_label = "ALERT" }
+            }
+
+            # City name mapping (English → Hebrew)
+            $city_map = @{
+                "tel aviv" = "תל אביב"; "ramat gan" = "רמת גן"; "jerusalem" = "ירושלים"
+                "haifa" = "חיפה"; "beer sheva" = "באר שבע"; "beersheba" = "באר שבע"
+                "beersheva" = "באר שבע"; "ashdod" = "אשדוד"; "ashkelon" = "אשקלון"
+                "netanya" = "נתניה"; "herzliya" = "הרצליה"; "petah tikva" = "פתח תקווה"
+                "rishon lezion" = "ראשון לציון"; "holon" = "חולון"; "bat yam" = "בת ים"
+                "bnei brak" = "בני ברק"; "rehovot" = "רחובות"; "kfar saba" = "כפר סבא"
+                "ra'anana" = "רעננה"; "raanana" = "רעננה"; "modiin" = "מודיעין"
+                "eilat" = "אילת"; "nazareth" = "נצרת"; "acre" = "עכו"; "akko" = "עכו"
+                "tiberias" = "טבריה"; "sderot" = "שדרות"; "kiryat shmona" = "קריית שמונה"
+                "nahariya" = "נהריה"; "lod" = "לוד"; "ramla" = "רמלה"
+                "givatayim" = "גבעתיים"; "hod hasharon" = "הוד השרון"
+            }
+
+            # Prefer English city names, fall back to Hebrew
+            if ($alert_data.cities_en -and $alert_data.cities_en.Count -gt 0) {
+                $all_cities = @($alert_data.cities_en)
+            } else {
+                $all_cities = @($alert_data.cities)
+            }
+
+            # City filtering (unless mode=all)
+            if ($env:RED_ALERT_MODE -eq "all" -or -not $env:RED_ALERT_CITIES) {
+                $filtered_cities = $all_cities
+            } else {
+                $filters = $env:RED_ALERT_CITIES -split ',' | ForEach-Object { $_.Trim().ToLower() }
+                $filtered_cities = @()
+                foreach ($city in $all_cities) {
+                    if (-not $city) { continue }
+                    foreach ($filter in $filters) {
+                        $hebrew = $city_map[$filter]
+                        if ($hebrew -and $city -match [regex]::Escape($hebrew)) {
+                            $filtered_cities += $city; break
+                        }
+                        if ($city.ToLower() -match [regex]::Escape($filter)) {
+                            $filtered_cities += $city; break
+                        }
+                    }
+                }
+            }
+
+            # Build alert display
+            $red_bg = "`e[41;97m"
+            if ($filtered_cities.Count -gt 0 -or $alert_cat -eq "13" -or $alert_cat -eq "14") {
+                if ($filtered_cities.Count -le 3) {
+                    $city_display = $filtered_cities -join " · "
+                    if ($city_display) {
+                        $alert_segment = "`n${red_bg} ${alert_icon} ${alert_label} · ${city_display} ${reset}"
+                    } else {
+                        $alert_segment = "`n${red_bg} ${alert_icon} ${alert_label} ${reset}"
+                    }
+                } else {
+                    $cycle_index = [math]::Floor($now / 2) % $filtered_cities.Count
+                    $cycling_city = $filtered_cities[$cycle_index]
+                    $count = $filtered_cities.Count
+                    $alert_segment = "`n${red_bg} ${alert_icon} ${alert_label} · ${count} cities · ${cycling_city} ${reset}"
+                }
+            }
+        }
+    }
+}
+
 # Output format: "🧠 [████░░] 72% · 🤖 Model · 💬 Topic · 🌿 branch 📁 /path"
-Write-Host "${color}🧠 $bar ${percent}%${reset} · 🤖 ${model_name} (${context_label})${name_segment}${pr_segment} 📁 $cwd"
+Write-Host "${color}🧠 $bar ${percent}%${reset} · 🤖 ${model_name} (${context_label})${name_segment}${pr_segment} 📁 ${cwd}${alert_segment}"

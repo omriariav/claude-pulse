@@ -4,11 +4,27 @@
 
 **claude-pulse** displays your current Claude Code token usage directly in your status line, helping you stay aware of context consumption without running `/context` manually.
 
-## New in v1.7.1: Context Window Label
+## New in v1.8.0: Red Alert (Pikud HaOref)
 
-- **Context size in status line** - Shows `(200k)` or `(1M)` next to the model name so you can tell at a glance whether you're in a standard or extended context session
+- **Real-time rocket alerts** - Displays Pikud HaOref (Israel Home Front Command) alerts directly in your status line
+- **City filtering** - Monitor specific cities via `RED_ALERT_CITIES` env var (English or Hebrew names)
+- **Multiple alert types** - Missiles, hostile aircraft, earthquakes, infiltration, drills, and more
+- **Three modes** - Normal (filtered), `all` (every alert), `mock` (offline testing)
+- **Background daemon** - Auto-starts when configured, polls every 2 seconds
+- **Test suite** - First test suite for claude-pulse with 50 tests across 3 suites
+
+Inspired by [lirantal/red-alert-statusline](https://github.com/lirantal/red-alert-statusline).
+
+```
+🧠 [████░░░░░░░░░░░░░░░░] 28% · 🤖 Opus 4.6 (200k) · 💬 Topic · 🌿 main 📁 ~/Code/project
+ 🚀 MISSILES · תל אביב - מרכז העיר · רמת גן - מערב
+```
 
 ## Previous Updates
+
+### v1.7.1: Context Window Label
+
+- **Context size in status line** - Shows `(200k)` or `(1M)` next to the model name so you can tell at a glance whether you're in a standard or extended context session
 
 ### v1.7.0: Context Bar, Branch/PR, Cleaner Topic UX
 
@@ -203,6 +219,36 @@ The script tries APIs in this order: Anthropic → OpenAI → Gemini → Fallbac
 3. **Caching** — Generated names are cached in `~/.cache/claude-pulse/` to avoid repeated API calls
 
 After adding your API key, restart your terminal or run `source ~/.zshrc` to apply.
+
+### Red Alert (Pikud HaOref)
+
+To enable rocket alert notifications in your status line, add city names to your Claude Code `settings.json`:
+
+```json
+{
+  "env": {
+    "RED_ALERT_CITIES": "Tel Aviv,Ramat Gan,Jerusalem"
+  }
+}
+```
+
+Supports English city names (automatically mapped to Hebrew), Hebrew names, and substring matching.
+
+#### Modes
+
+| Variable | Values | Description |
+|----------|--------|-------------|
+| `RED_ALERT_CITIES` | comma-separated | Filter alerts to specific cities |
+| `RED_ALERT_MODE` | `all` / `mock` | `all` = show every alert. `mock` = offline test data |
+
+**Examples:**
+```json
+{"env": {"RED_ALERT_CITIES": "Tel Aviv,Haifa"}}
+{"env": {"RED_ALERT_MODE": "all"}}
+{"env": {"RED_ALERT_MODE": "mock"}}
+```
+
+The background daemon auto-starts when either variable is set and auto-stops on exit. State is stored in `/tmp/red_alert_state.json`.
 
 ### Model Detection
 
