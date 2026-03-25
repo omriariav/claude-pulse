@@ -483,7 +483,7 @@ if [[ -n "$rate_5h" ]]; then
     else
         rate_5h_color="\033[32m"
     fi
-    rate_segment="${rate_5h_color}5h: ${rate_5h_int}%%${reset}"
+    rate_segment="⚡ ${rate_5h_color}5h: ${rate_5h_int}%%${reset}"
     if [[ -n "$rate_7d" ]]; then
         rate_7d_int=${rate_7d%.*}
         rate_segment="${rate_segment} · 7d: ${rate_7d_int}%%"
@@ -511,7 +511,7 @@ if [[ -n "$alert_segment" ]]; then
     # Active alert: prepend rate limits compactly
     if [[ -n "$rate_segment" ]]; then
         # Compact rate format for alert line
-        compact_rate="${rate_5h_color}5h:${rate_5h_int}%%${reset}"
+        compact_rate="⚡${rate_5h_color}5h:${rate_5h_int}%%${reset}"
         if [[ -n "$rate_7d" ]]; then
             compact_rate="${compact_rate} 7d:${rate_7d_int}%%"
         fi
