@@ -32,7 +32,11 @@ log() {
 
 cleanup() {
     log "Daemon stopping (PID $$)"
-    rm -f "$PID_FILE"
+    # Only remove PID file if it's ours (avoid removing a newer daemon's PID)
+    current_pid=$(cat "$PID_FILE" 2>/dev/null)
+    if [[ "$current_pid" == "$$" ]]; then
+        rm -f "$PID_FILE"
+    fi
     exit 0
 }
 
@@ -175,17 +179,26 @@ cities_match_filter() {
     return 1
 }
 
-# Check if another daemon is already running (prevent duplicates)
-if [[ -f "$PID_FILE" ]]; then
-    existing_pid=$(cat "$PID_FILE" 2>/dev/null)
-    if [[ -n "$existing_pid" ]] && [[ "$existing_pid" != "$$" ]] && kill -0 "$existing_pid" 2>/dev/null; then
-        log "Another daemon already running (PID $existing_pid), exiting"
+# Atomic singleton lock (mkdir is atomic — only one process wins)
+LOCK_DIR="${STATE_DIR}/daemon.lock"
+if ! mkdir "$LOCK_DIR" 2>/dev/null; then
+    # Lock exists — check if holder is still alive
+    if [[ -f "$PID_FILE" ]]; then
+        existing_pid=$(cat "$PID_FILE" 2>/dev/null)
+        if [[ -n "$existing_pid" ]] && kill -0 "$existing_pid" 2>/dev/null; then
+            exit 0
+        fi
+    fi
+    # Stale lock — remove and retry
+    rm -rf "$LOCK_DIR"
+    if ! mkdir "$LOCK_DIR" 2>/dev/null; then
         exit 0
     fi
 fi
 
-# Write PID file (used by statusline to show 🔔 indicator)
+# We hold the lock — write PID and release
 echo $$ > "$PID_FILE"
+rm -rf "$LOCK_DIR"
 log "Daemon started (PID $$, mode=${RED_ALERT_MODE:-normal})"
 
 mock_index=0
