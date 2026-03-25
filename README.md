@@ -1,23 +1,28 @@
 # claude-pulse
 
-> Real-time token usage monitoring for Claude Code status line | **v1.7.1**
+> Real-time token usage monitoring for Claude Code status line | **v2.0.0**
 
 **claude-pulse** displays your current Claude Code token usage directly in your status line, helping you stay aware of context consumption without running `/context` manually.
 
-## New in v1.8.0: Red Alert (Pikud HaOref)
+## New in v2.0.0: Red Alert (Pikud HaOref)
 
-- **Real-time rocket alerts** - Displays Pikud HaOref (Israel Home Front Command) alerts directly in your status line
-- **City filtering** - Monitor specific cities via `RED_ALERT_CITIES` env var (English or Hebrew names)
-- **Multiple alert types** - Missiles, hostile aircraft, earthquakes, infiltration, drills, and more
+Real-time Pikud HaOref (Israel Home Front Command) rocket alert notifications in your statusline. Stay aware of alerts while coding. Inspired by [lirantal/red-alert-statusline](https://github.com/lirantal/red-alert-statusline).
+
+- **Real-time alerts** - Missiles, hostile aircraft, earthquakes, infiltration, drills, and more
+- **City & zone filtering** - Monitor specific cities or zones with fuzzy matching (English or Hebrew)
+- **English city names** - 1492 locations translated via official oref.org.il districts
+- **Alert sounds** - macOS m4a playback with configurable cooldown (20s default)
+- **launchd integration** - Daemon managed by macOS LaunchAgent, single instance guaranteed
 - **Three modes** - Normal (filtered), `all` (every alert), `mock` (offline testing)
-- **Background daemon** - Auto-starts when configured, polls every 2 seconds
-- **Test suite** - First test suite for claude-pulse with 50 tests across 3 suites
-
-Inspired by [lirantal/red-alert-statusline](https://github.com/lirantal/red-alert-statusline).
+- **Interactive setup** - `/setup-red-alert` command with city/zone selection
+- **Test suite** - 51 tests across 3 suites
 
 ```
 🧠 [████░░░░░░░░░░░░░░░░] 28% · 🤖 Opus 4.6 (200k) · 💬 Topic · 🌿 main 📁 ~/Code/project
- 🚀 MISSILES · תל אביב - מרכז העיר · רמת גן - מערב
+🚀 MISSILES · Tel Aviv - City Center · Ramat Gan - West
+
+🧠 [████░░░░░░░░░░░░░░░░] 28% · 🤖 Opus 4.6 (200k) · 💬 Topic · 🌿 main 📁 ~/Code/project
+🟢 Alerts daemon ON
 ```
 
 ## Previous Updates
