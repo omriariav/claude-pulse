@@ -1,5 +1,41 @@
 # Release Notes
 
+## v2.2.0 - Daemon Stability + Category Fixes from Real Alerts
+
+**Released:** March 25, 2026
+
+### What's New
+
+- **Cat 6 = UAV** - Real API data confirmed cat 6 is `חדירת כלי טיס עוין` (hostile aircraft/drone infiltration), not hazmat. Updated label to `✈️ UAV` and added to sound triggers.
+- **Cat 10 = event ended** - Confirmed as `האירוע הסתיים`. Now logged only, no display or sound.
+- **Daemon singleton lock** - Atomic `mkdir` lock held for daemon lifetime. PID stored inside lock dir. Contenders wait 1s for init race before declaring stale.
+- **Safe PID cleanup** - Cleanup only removes PID/lock if they belong to the exiting process.
+- **Heartbeat timeout 120s** - Daemon no longer dies during idle Claude Code periods.
+- **Statusline kickstart only at zero** - Auto-restart only fires when truly zero daemons running.
+- **Debug mode** - `RED_ALERT_DEBUG=1` shows `(N)` daemon count in statusline and logs lock contention events.
+- **Alert title logging** - Hebrew title from API now logged for category identification.
+
+### Category Map (confirmed from real alerts)
+
+| Cat | Title | Label | Sound |
+|-----|-------|-------|-------|
+| 1 | ירי רקטות וטילים | MISSILES | go.m4a |
+| 2 | (hostile aircraft) | AIRCRAFT | go.m4a |
+| 6 | חדירת כלי טיס עוין | UAV | go.m4a |
+| 10 | האירוע הסתיים | (skipped) | none |
+| 14 | (pre-alert) | PRE-ALERT | early.m4a |
+
+### Upgrade
+
+```bash
+cd claude-pulse
+git pull
+cp red-alert-daemon.sh ~/.claude/red-alert-daemon.sh
+cp claude-pulse ~/.claude/statusline-command.sh
+```
+
+---
+
 ## v2.1.1 - Sound Only for Actionable Alerts
 
 **Released:** March 25, 2026
