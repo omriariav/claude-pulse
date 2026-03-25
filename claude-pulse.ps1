@@ -332,7 +332,7 @@ if ($env:RED_ALERT_CITIES -or $env:RED_ALERT_MODE) {
                 "3"   { $alert_icon = "🌍"; $alert_label = "EARTHQUAKE" }
                 "4"   { $alert_icon = "🌊"; $alert_label = "TSUNAMI" }
                 "5"   { $alert_icon = "☢️";  $alert_label = "RADIOLOGICAL" }
-                "6"   { $alert_icon = "☣️";  $alert_label = "HAZMAT" }
+                "6"   { $alert_icon = "✈️";  $alert_label = "UAV" }
                 "7"   { $alert_icon = "🔫"; $alert_label = "INFILTRATION" }
                 "13"  { $alert_icon = "✅"; $alert_label = "ALL CLEAR" }
                 "14"  { $alert_icon = "⚠️";  $alert_label = "PRE-ALERT" }

@@ -344,7 +344,7 @@ if [[ -n "$RED_ALERT_CITIES" ]] || [[ -n "$RED_ALERT_MODE" ]]; then
                 5)   alert_icon="☢️";  alert_label="RADIOLOGICAL" ;;
                 6)   alert_icon="✈️";  alert_label="UAV" ;;
                 7)   alert_icon="🔫"; alert_label="INFILTRATION" ;;
-                8|9|10|11|12) alert_icon="⚠️"; alert_label="ALERT" ;;
+                8|9|11|12) alert_icon="⚠️"; alert_label="ALERT" ;;
                 13)  alert_icon="✅"; alert_label="ALL CLEAR" ;;
                 14)  alert_icon="⚠️";  alert_label="PRE-ALERT" ;;
                 101|102|103|104|105|106|107)
