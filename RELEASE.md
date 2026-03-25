@@ -1,5 +1,33 @@
 # Release Notes
 
+## v2.2.1 - pgrep Fast Shutdown + Safe pgrep Fallback
+
+**Released:** March 25, 2026
+
+### What's New
+
+- **pgrep fast-path shutdown** — Daemon checks if Claude Code process (`pgrep -x "claude"`) exists every poll cycle. After 3 consecutive misses (~6s), exits immediately instead of waiting for 300s heartbeat timeout.
+- **Safe pgrep check** — Only uses pgrep when available (`command -v pgrep`). Falls through to heartbeat if pgrep is absent or broken.
+- **Heartbeat timeout 300s** — Increased from 120s. Survives long idle periods without unnecessary restart churn.
+
+### Shutdown Behavior
+
+| Signal | Time to exit | How |
+|--------|-------------|-----|
+| Claude Code closes | ~6 seconds | pgrep misses 3x |
+| pgrep unavailable | ~5 minutes | Heartbeat stale |
+| Laptop sleep/wake | Survives | Heartbeat refreshed on wake |
+
+### Upgrade
+
+```bash
+cd claude-pulse
+git pull
+cp red-alert-daemon.sh ~/.claude/red-alert-daemon.sh
+```
+
+---
+
 ## v2.2.0 - Daemon Stability + Category Fixes from Real Alerts
 
 **Released:** March 25, 2026

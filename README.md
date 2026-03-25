@@ -1,15 +1,22 @@
 # claude-pulse
 
-> Real-time token usage monitoring for Claude Code status line | **v2.2.0**
+> Real-time token usage monitoring for Claude Code status line | **v2.2.1**
 
 **claude-pulse** displays your current Claude Code token usage directly in your status line, helping you stay aware of context consumption without running `/context` manually.
 
-## New in v2.2.0: Daemon Stability + Category Fixes from Real Alerts
+## New in v2.2.1: Smart Daemon Shutdown
+
+- **pgrep fast-path** - Daemon detects when Claude Code closes within ~6 seconds (3 consecutive `pgrep` misses), instead of waiting 5 minutes for heartbeat timeout
+- **Safe fallback** - If `pgrep` is unavailable, heartbeat timeout (300s) handles shutdown
+- **Heartbeat 300s** - Increased from 120s to survive long idle periods without restart churn
+
+## Previous Updates
+
+### v2.2.0: Daemon Stability + Category Fixes from Real Alerts
 
 - **Cat 6 = UAV, not hazmat** - Real wartime data confirmed cat 6 is "hostile aircraft infiltration" (drones). Now shows `✈️ UAV` and plays alert sound.
 - **Cat 10 = event ended** - Confirmed as "האירוע הסתיים". Logged but no longer displayed or sounded.
 - **Daemon singleton lock** - Atomic `mkdir` lock held for daemon lifetime prevents duplicate daemons and double sounds.
-- **Heartbeat timeout 120s** - Daemon survives idle Claude Code periods without dying/restarting.
 - **Debug mode** - `RED_ALERT_DEBUG=1` shows daemon count in statusline for diagnostics.
 - **Alert title logging** - Hebrew title from API now logged for identifying unknown categories.
 
