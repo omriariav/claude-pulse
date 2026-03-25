@@ -1,5 +1,5 @@
 #!/bin/bash
-# claude-pulse v2.0.0: Real-time token usage for Claude Code status line
+# claude-pulse v2.1.0: Real-time token usage for Claude Code status line
 # Uses billing API (transcript) for accurate FULL context usage
 # Falls back to native context_window when transcript unavailable
 # Displays current model name and AI-generated conversation names
@@ -13,6 +13,10 @@ cwd=$(echo "$input" | jq -r '.cwd')
 transcript_path=$(echo "$input" | jq -r '.transcript_path')
 session_id=$(echo "$input" | jq -r '.session_id')
 model_id=$(echo "$input" | jq -r '.model.id // "claude-sonnet-4-5-20250929"')
+
+# Extract rate limit data (available in newer Claude Code versions)
+rate_5h=$(echo "$input" | jq -r '.rate_limits.five_hour.used_percentage // empty' 2>/dev/null)
+rate_7d=$(echo "$input" | jq -r '.rate_limits.seven_day.used_percentage // empty' 2>/dev/null)
 
 # Convert model ID to friendly name
 case "$model_id" in
@@ -468,18 +472,65 @@ if [[ -n "$RED_ALERT_CITIES" ]] || [[ -n "$RED_ALERT_MODE" ]]; then
     fi
 fi
 
-# Alert status on 2nd line
-# No config → nothing. Config + daemon running, no alert → 🔔 green line. Active alert → 🚀 red line. No daemon → 🔕 grey line.
+# Build rate limit segment (color-coded like context bar)
+rate_segment=""
+if [[ -n "$rate_5h" ]]; then
+    rate_5h_int=${rate_5h%.*}
+    if (( rate_5h_int >= 80 )); then
+        rate_5h_color="\033[31m"
+    elif (( rate_5h_int >= 50 )); then
+        rate_5h_color="\033[33m"
+    else
+        rate_5h_color="\033[32m"
+    fi
+    rate_segment="${rate_5h_color}5h: ${rate_5h_int}%%${reset}"
+    if [[ -n "$rate_7d" ]]; then
+        rate_7d_int=${rate_7d%.*}
+        rate_segment="${rate_segment} · 7d: ${rate_7d_int}%%"
+    fi
+fi
+
+# Alert status indicator
+alert_indicator=""
 if [[ -n "$RED_ALERT_CITIES" ]] || [[ -n "$RED_ALERT_MODE" ]]; then
     _pid_file="${RED_ALERT_PID_FILE:-$HOME/.local/state/claude-pulse/red_alert_daemon.pid}"
     if [[ -f "$_pid_file" ]] && kill -0 "$(cat "$_pid_file" 2>/dev/null)" 2>/dev/null; then
         if [[ -z "$alert_segment" ]]; then
-            alert_segment="\n\033[32m🟢 Alerts daemon ON${reset}"
+            alert_indicator="\033[32m🟢 Alerts daemon ON${reset}"
         fi
     else
-        alert_segment="\n\033[90m🔕 Alerts daemon not running${reset}"
+        # Auto-restart daemon via launchctl
+        launchctl kickstart "gui/$(id -u)/com.claude-pulse.red-alert" 2>/dev/null
+        alert_indicator="\033[90m🔕 Alerts daemon not running${reset}"
     fi
 fi
 
+# Build 2nd line from rate limits + alert status
+line2=""
+if [[ -n "$alert_segment" ]]; then
+    # Active alert: prepend rate limits compactly
+    if [[ -n "$rate_segment" ]]; then
+        # Compact rate format for alert line
+        compact_rate="${rate_5h_color}5h:${rate_5h_int}%%${reset}"
+        if [[ -n "$rate_7d" ]]; then
+            compact_rate="${compact_rate} 7d:${rate_7d_int}%%"
+        fi
+        # Replace the \n prefix on alert_segment and prepend rate
+        alert_no_newline="${alert_segment#\\n}"
+        line2="\n${compact_rate} · ${alert_no_newline}"
+    else
+        line2="${alert_segment}"
+    fi
+elif [[ -n "$rate_segment" ]] && [[ -n "$alert_indicator" ]]; then
+    # Rate limits + alert indicator
+    line2="\n${rate_segment} · ${alert_indicator}"
+elif [[ -n "$rate_segment" ]]; then
+    # Rate limits only (no red alert configured)
+    line2="\n${rate_segment}"
+elif [[ -n "$alert_indicator" ]]; then
+    # Alert indicator only (no rate limit data)
+    line2="\n${alert_indicator}"
+fi
+
 # Output format: "🧠 [████░░] 72% · 🤖 Model · 💬 Topic · 🌿 branch 📁 /path"
-printf "${color}🧠 ${bar} ${percent}%%${reset} · 🤖 ${model_name} (${context_label})${name_segment}${pr_segment} 📁 ${cwd}${alert_segment}"
+printf "${color}🧠 ${bar} ${percent}%%${reset} · 🤖 ${model_name} (${context_label})${name_segment}${pr_segment} 📁 ${cwd}${line2}"
