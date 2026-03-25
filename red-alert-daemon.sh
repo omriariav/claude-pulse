@@ -220,7 +220,7 @@ log "Daemon started (PID $$, mode=${RED_ALERT_MODE:-normal})"
 mock_index=0
 
 HEARTBEAT_FILE="${STATE_DIR}/heartbeat"
-HEARTBEAT_TIMEOUT="${RED_ALERT_HEARTBEAT_TIMEOUT:-120}"
+HEARTBEAT_TIMEOUT="${RED_ALERT_HEARTBEAT_TIMEOUT:-300}"
 DAEMON_START_TIME=$(date +%s)
 
 # Touch heartbeat on startup to prevent immediate exit from stale file
