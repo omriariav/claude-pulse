@@ -32,10 +32,11 @@ log() {
 
 cleanup() {
     log "Daemon stopping (PID $$)"
-    # Only remove PID file if it's ours (avoid removing a newer daemon's PID)
+    # Only remove PID file and lock if they're ours
     current_pid=$(cat "$PID_FILE" 2>/dev/null)
     if [[ "$current_pid" == "$$" ]]; then
         rm -f "$PID_FILE"
+        rm -rf "${STATE_DIR}/daemon.lock"
     fi
     exit 0
 }
@@ -196,9 +197,8 @@ if ! mkdir "$LOCK_DIR" 2>/dev/null; then
     fi
 fi
 
-# We hold the lock — write PID and release
+# We hold the lock — write PID (lock dir stays for daemon lifetime)
 echo $$ > "$PID_FILE"
-rm -rf "$LOCK_DIR"
 log "Daemon started (PID $$, mode=${RED_ALERT_MODE:-normal})"
 
 mock_index=0
