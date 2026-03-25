@@ -228,7 +228,7 @@ while true; do
             if cities_match_filter "$cities" "$cities_en"; then
                 case "$cat_val" in
                     14) play_sound "$SOUND_DIR/early.m4a" "$alert_id" ;;
-                    1|2|3|4|5|6|7|101|102|103|104|105|106|107) play_sound "$SOUND_DIR/go.m4a" "$alert_id" ;;
+                    1|2) play_sound "$SOUND_DIR/go.m4a" "$alert_id" ;;
                 esac
             fi
         fi
@@ -291,7 +291,9 @@ while true; do
             cities_en=$(translate_cities "$cities")
             write_state "$(build_state "$alert_id" "$cat_val" "$title" "$cities" "$cities_en" "$now" 0)"
             if cities_match_filter "$cities" "$cities_en"; then
-                play_sound "$SOUND_DIR/go.m4a" "$alert_id"
+                case "$cat_val" in
+                    1|2) play_sound "$SOUND_DIR/go.m4a" "$alert_id" ;;
+                esac
             fi
             ;;
         *)
