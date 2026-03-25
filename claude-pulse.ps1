@@ -1,4 +1,4 @@
-# claude-pulse.ps1 v2.1.1: Real-time token usage for Claude Code status line (Windows)
+# claude-pulse.ps1 v2.2.0: Real-time token usage for Claude Code status line (Windows)
 # Uses billing API (transcript) for accurate FULL context usage
 # Falls back to native context_window when transcript unavailable
 # Displays current model name and AI-generated conversation names
@@ -332,7 +332,7 @@ if ($env:RED_ALERT_CITIES -or $env:RED_ALERT_MODE) {
                 "3"   { $alert_icon = "🌍"; $alert_label = "EARTHQUAKE" }
                 "4"   { $alert_icon = "🌊"; $alert_label = "TSUNAMI" }
                 "5"   { $alert_icon = "☢️";  $alert_label = "RADIOLOGICAL" }
-                "6"   { $alert_icon = "☣️";  $alert_label = "HAZMAT" }
+                "6"   { $alert_icon = "✈️";  $alert_label = "UAV" }
                 "7"   { $alert_icon = "🔫"; $alert_label = "INFILTRATION" }
                 "13"  { $alert_icon = "✅"; $alert_label = "ALL CLEAR" }
                 "14"  { $alert_icon = "⚠️";  $alert_label = "PRE-ALERT" }

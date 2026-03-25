@@ -1,14 +1,23 @@
 # claude-pulse
 
-> Real-time token usage monitoring for Claude Code status line | **v2.1.1**
+> Real-time token usage monitoring for Claude Code status line | **v2.2.0**
 
 **claude-pulse** displays your current Claude Code token usage directly in your status line, helping you stay aware of context consumption without running `/context` manually.
 
-## New in v2.1.1: Sound Only for Actionable Alerts
+## New in v2.2.0: Daemon Stability + Category Fixes from Real Alerts
 
-- **Sound narrowed to missiles + aircraft only** - Only cat 1 (missiles) and cat 2 (hostile aircraft) play `go.m4a`. Pre-alert (cat 14) plays `early.m4a`. All other categories display visually but stay silent.
+- **Cat 6 = UAV, not hazmat** - Real wartime data confirmed cat 6 is "hostile aircraft infiltration" (drones). Now shows `✈️ UAV` and plays alert sound.
+- **Cat 10 = event ended** - Confirmed as "האירוע הסתיים". Logged but no longer displayed or sounded.
+- **Daemon singleton lock** - Atomic `mkdir` lock held for daemon lifetime prevents duplicate daemons and double sounds.
+- **Heartbeat timeout 120s** - Daemon survives idle Claude Code periods without dying/restarting.
+- **Debug mode** - `RED_ALERT_DEBUG=1` shows daemon count in statusline for diagnostics.
+- **Alert title logging** - Hebrew title from API now logged for identifying unknown categories.
 
 ## Previous Updates
+
+### v2.1.1: Sound Only for Actionable Alerts
+
+- Sound narrowed to missiles + aircraft only. Pre-alert plays `early.m4a`. All other categories display visually but stay silent.
 
 ### v2.1.0: Rate Limits + Alert Bug Fixes
 

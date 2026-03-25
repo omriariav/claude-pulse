@@ -32,7 +32,12 @@ log() {
 
 cleanup() {
     log "Daemon stopping (PID $$)"
-    rm -f "$PID_FILE"
+    # Only remove PID file and lock if they're ours
+    current_pid=$(cat "$PID_FILE" 2>/dev/null)
+    if [[ "$current_pid" == "$$" ]]; then
+        rm -f "$PID_FILE"
+        rm -rf "${STATE_DIR}/daemon.lock"
+    fi
     exit 0
 }
 
@@ -175,14 +180,47 @@ cities_match_filter() {
     return 1
 }
 
-# Write PID file (used by statusline to show 🔔 indicator)
+# Atomic singleton lock (mkdir is atomic — only one process wins)
+# PID stored inside lock dir so ownership is coupled with the lock
+LOCK_DIR="${STATE_DIR}/daemon.lock"
+LOCK_PID="${LOCK_DIR}/pid"
+if ! mkdir "$LOCK_DIR" 2>/dev/null; then
+    # Lock exists — check if holder is still alive via pid inside lock
+    if [[ -f "$LOCK_PID" ]]; then
+        existing_pid=$(cat "$LOCK_PID" 2>/dev/null)
+        if [[ -n "$existing_pid" ]] && kill -0 "$existing_pid" 2>/dev/null; then
+            [[ -n "$RED_ALERT_DEBUG" ]] && log "DEBUG: Lock held by live PID $existing_pid, exiting"
+            exit 0
+        fi
+    fi
+    # Stale lock (dead process or no pid yet) — wait briefly then check again
+    [[ -n "$RED_ALERT_DEBUG" ]] && log "DEBUG: Lock exists but no live PID, waiting 1s..."
+    sleep 1
+    if [[ -f "$LOCK_PID" ]]; then
+        existing_pid=$(cat "$LOCK_PID" 2>/dev/null)
+        if [[ -n "$existing_pid" ]] && kill -0 "$existing_pid" 2>/dev/null; then
+            [[ -n "$RED_ALERT_DEBUG" ]] && log "DEBUG: PID $existing_pid appeared after wait, exiting"
+            exit 0
+        fi
+    fi
+    # Truly stale — reclaim
+    [[ -n "$RED_ALERT_DEBUG" ]] && log "DEBUG: Reclaiming stale lock (PID was: $(cat "$LOCK_PID" 2>/dev/null || echo 'none'))"
+    rm -rf "$LOCK_DIR"
+    if ! mkdir "$LOCK_DIR" 2>/dev/null; then
+        [[ -n "$RED_ALERT_DEBUG" ]] && log "DEBUG: Failed to reclaim lock, another process won, exiting"
+        exit 0
+    fi
+fi
+
+# We hold the lock — write PID immediately (inside lock dir + state dir)
+echo $$ > "$LOCK_PID"
 echo $$ > "$PID_FILE"
 log "Daemon started (PID $$, mode=${RED_ALERT_MODE:-normal})"
 
 mock_index=0
 
 HEARTBEAT_FILE="${STATE_DIR}/heartbeat"
-HEARTBEAT_TIMEOUT="${RED_ALERT_HEARTBEAT_TIMEOUT:-30}"
+HEARTBEAT_TIMEOUT="${RED_ALERT_HEARTBEAT_TIMEOUT:-120}"
 DAEMON_START_TIME=$(date +%s)
 
 # Touch heartbeat on startup to prevent immediate exit from stale file
@@ -228,7 +266,7 @@ while true; do
             if cities_match_filter "$cities" "$cities_en"; then
                 case "$cat_val" in
                     14) play_sound "$SOUND_DIR/early.m4a" "$alert_id" ;;
-                    1|2) play_sound "$SOUND_DIR/go.m4a" "$alert_id" ;;
+                    1|2|6) play_sound "$SOUND_DIR/go.m4a" "$alert_id" ;;
                 esac
             fi
         fi
@@ -285,14 +323,18 @@ while true; do
                 play_sound "$SOUND_DIR/early.m4a" "$alert_id"
             fi
             ;;
-        1|2|3|4|5|6|7|8|9|10|11|12|101|102|103|104|105|106|107)
+        10)
+            # Event ended (האירוע הסתיים) — log only, don't display or sound
+            log "EVENT ENDED cat=$cat_val title=$title id=$alert_id cities=$cities"
+            ;;
+        1|2|3|4|5|6|7|8|9|11|12|101|102|103|104|105|106|107)
             # Active alert or drill
-            log "ALERT cat=$cat_val id=$alert_id cities=$cities"
+            log "ALERT cat=$cat_val title=$title id=$alert_id cities=$cities"
             cities_en=$(translate_cities "$cities")
             write_state "$(build_state "$alert_id" "$cat_val" "$title" "$cities" "$cities_en" "$now" 0)"
             if cities_match_filter "$cities" "$cities_en"; then
                 case "$cat_val" in
-                    1|2) play_sound "$SOUND_DIR/go.m4a" "$alert_id" ;;
+                    1|2|6) play_sound "$SOUND_DIR/go.m4a" "$alert_id" ;;
                 esac
             fi
             ;;
