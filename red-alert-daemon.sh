@@ -45,6 +45,15 @@ write_state() {
     mv -f "$tmp_file" "$STATE_FILE"
 }
 
+# Build state JSON safely using jq (handles quotes/escapes in API data)
+build_state() {
+    local id="$1" cat="$2" title="$3" cities="$4" cities_en="$5" last_seen="$6" cleared="$7"
+    jq -n --arg id "$id" --arg cat "$cat" --arg title "$title" \
+        --argjson cities "$cities" --argjson cities_en "$cities_en" \
+        --argjson last_seen "$last_seen" --argjson cleared "$cleared" \
+        '{alert_id:$id,cat:$cat,title:$title,cities:$cities,cities_en:$cities_en,last_seen_unix:$last_seen,cleared_unix:$cleared}'
+}
+
 # Play alert sound (only once per alert_id, non-blocking)
 play_sound() {
     local sound_file="$1"
@@ -139,14 +148,14 @@ while true; do
 
         if [[ "$mock_data" == "{}" ]] || [[ -z "$mock_data" ]]; then
             # Quiet period — write empty state
-            write_state "{\"alert_id\":\"\",\"cat\":\"\",\"title\":\"\",\"cities\":[],\"cities_en\":[],\"last_seen_unix\":0,\"cleared_unix\":$now}"
+            write_state "$(build_state "" "" "" "[]" "[]" 0 "$now")"
         else
             alert_id="mock_$(date +%s%N)"
             cat_val=$(echo "$mock_data" | jq -r '.cat // ""')
             title=$(echo "$mock_data" | jq -r '.title // ""')
             cities=$(echo "$mock_data" | jq -c '.data // []')
             cities_en=$(translate_cities "$cities")
-            write_state "{\"alert_id\":\"$alert_id\",\"cat\":\"$cat_val\",\"title\":\"$title\",\"cities\":$cities,\"cities_en\":$cities_en,\"last_seen_unix\":$now,\"cleared_unix\":0}"
+            write_state "$(build_state "$alert_id" "$cat_val" "$title" "$cities" "$cities_en" "$now" 0)"
             # Play sound for mock alerts
             case "$cat_val" in
                 14) play_sound "$SOUND_DIR/early.m4a" "$alert_id" ;;
@@ -195,20 +204,20 @@ while true; do
             # All clear
             log "All clear received (id: $alert_id)"
             cities_en=$(translate_cities "$cities")
-            write_state "{\"alert_id\":\"$alert_id\",\"cat\":\"13\",\"title\":\"$title\",\"cities\":$cities,\"cities_en\":$cities_en,\"last_seen_unix\":$now,\"cleared_unix\":$now}"
+            write_state "$(build_state "$alert_id" "13" "$title" "$cities" "$cities_en" "$now" "$now")"
             ;;
         14)
             # Pre-alert
             log "Pre-alert received (id: $alert_id)"
             cities_en=$(translate_cities "$cities")
-            write_state "{\"alert_id\":\"$alert_id\",\"cat\":\"14\",\"title\":\"$title\",\"cities\":$cities,\"cities_en\":$cities_en,\"last_seen_unix\":$now,\"cleared_unix\":0}"
+            write_state "$(build_state "$alert_id" "14" "$title" "$cities" "$cities_en" "$now" 0)"
             play_sound "$SOUND_DIR/early.m4a" "$alert_id"
             ;;
         1|2|3|4|5|6|7|8|9|10|11|12|101|102|103|104|105|106|107)
             # Active alert or drill
             log "ALERT cat=$cat_val id=$alert_id cities=$cities"
             cities_en=$(translate_cities "$cities")
-            write_state "{\"alert_id\":\"$alert_id\",\"cat\":\"$cat_val\",\"title\":\"$title\",\"cities\":$cities,\"cities_en\":$cities_en,\"last_seen_unix\":$now,\"cleared_unix\":0}"
+            write_state "$(build_state "$alert_id" "$cat_val" "$title" "$cities" "$cities_en" "$now" 0)"
             play_sound "$SOUND_DIR/go.m4a" "$alert_id"
             ;;
         *)

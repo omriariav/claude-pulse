@@ -348,8 +348,15 @@ if [[ -n "$RED_ALERT_CITIES" ]] || [[ -n "$RED_ALERT_MODE" ]]; then
                 *)   alert_icon="⚠️";  alert_label="ALERT" ;;
             esac
 
-            # Get all cities from state (prefer English, fall back to Hebrew)
-            all_cities=$(echo "$alert_data" | jq -r 'if (.cities_en // [] | length) > 0 then .cities_en[]? else .cities[]? end' 2>/dev/null)
+            # Get cities from state (both English and Hebrew for filtering)
+            all_cities_en=$(echo "$alert_data" | jq -r '.cities_en[]?' 2>/dev/null)
+            all_cities_he=$(echo "$alert_data" | jq -r '.cities[]?' 2>/dev/null)
+            # Display English if available, otherwise Hebrew
+            if [[ -n "$all_cities_en" ]]; then
+                all_cities="$all_cities_en"
+            else
+                all_cities="$all_cities_he"
+            fi
 
             # City filtering (unless mode=all)
             if [[ "$RED_ALERT_MODE" == "all" ]] || [[ -z "$RED_ALERT_CITIES" ]]; then
@@ -357,11 +364,19 @@ if [[ -n "$RED_ALERT_CITIES" ]] || [[ -n "$RED_ALERT_MODE" ]]; then
             else
                 filtered_cities=""
                 IFS=',' read -ra city_filters <<< "$RED_ALERT_CITIES"
-                while IFS= read -r city; do
+                # Build parallel arrays: English display names + Hebrew originals
+                city_en_arr=()
+                city_he_arr=()
+                while IFS= read -r c; do [[ -n "$c" ]] && city_en_arr+=("$c"); done <<< "$all_cities_en"
+                while IFS= read -r c; do [[ -n "$c" ]] && city_he_arr+=("$c"); done <<< "$all_cities_he"
+
+                for i in "${!city_en_arr[@]}"; do
+                    city="${city_en_arr[$i]}"
+                    city_he="${city_he_arr[$i]:-}"
                     [[ -z "$city" ]] && continue
                     for filter in "${city_filters[@]}"; do
                         filter=$(echo "$filter" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | tr '[:upper:]' '[:lower:]')
-                        # Map English city names to Hebrew
+                        # Map English filter to Hebrew for cross-language matching
                         hebrew=""
                         case "$filter" in
                             "tel aviv") hebrew="תל אביב" ;;
@@ -394,13 +409,17 @@ if [[ -n "$RED_ALERT_CITIES" ]] || [[ -n "$RED_ALERT_MODE" ]]; then
                             "givatayim") hebrew="גבעתיים" ;;
                             "hod hasharon") hebrew="הוד השרון" ;;
                         esac
-                        # Check Hebrew match (mapped or direct substring)
-                        if [[ -n "$hebrew" ]] && [[ "$city" == *"$hebrew"* ]]; then
+                        # Check Hebrew match against Hebrew city name
+                        if [[ -n "$hebrew" ]] && [[ -n "$city_he" ]] && [[ "$city_he" == *"$hebrew"* ]]; then
                             filtered_cities="${filtered_cities}${city}"$'\n'
                             break
                         fi
-                        # Fuzzy match: substring on city name (works for both broad and zone-specific)
-                        # "tel aviv" → all zones, "city center" → just that zone, "south" → south zone
+                        # Check Hebrew filter directly against Hebrew city name
+                        if [[ -n "$city_he" ]] && [[ "$city_he" == *"$filter"* ]]; then
+                            filtered_cities="${filtered_cities}${city}"$'\n'
+                            break
+                        fi
+                        # Fuzzy match: substring on English city name
                         city_lower=$(echo "$city" | tr '[:upper:]' '[:lower:]')
                         if [[ "$city_lower" == *"$filter"* ]] || [[ "$city" == *"$filter"* ]]; then
                             filtered_cities="${filtered_cities}${city}"$'\n'

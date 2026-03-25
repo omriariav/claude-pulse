@@ -26,9 +26,10 @@ mkdir -p "$CLAUDE_DIR"
 DISTRICTS_URL="https://www.oref.org.il/districts/districts_eng.json"
 DISTRICTS_FILE="$CLAUDE_DIR/districts_eng.json"
 echo "Downloading district translations..."
-if curl -s --max-time 10 -o "$DISTRICTS_FILE" "$DISTRICTS_URL" 2>/dev/null; then
-    echo "Districts file saved to $DISTRICTS_FILE"
+if curl -sf --max-time 10 -o "$DISTRICTS_FILE" "$DISTRICTS_URL" 2>/dev/null && jq empty "$DISTRICTS_FILE" 2>/dev/null; then
+    echo "Districts file saved to $DISTRICTS_FILE ($(jq length "$DISTRICTS_FILE") entries)"
 else
+    rm -f "$DISTRICTS_FILE"
     echo "Warning: Could not download districts file. English city names will not be available."
 fi
 

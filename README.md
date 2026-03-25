@@ -227,7 +227,42 @@ After adding your API key, restart your terminal or run `source ~/.zshrc` to app
 
 ### Red Alert (Pikud HaOref)
 
-To enable rocket alert notifications in your status line, add city names to your Claude Code `settings.json`:
+#### Setup
+
+Run the interactive setup command inside Claude Code:
+
+```
+/setup-red-alert
+```
+
+This will:
+1. Install the daemon and sound files
+2. Download city/district translations (1492 locations)
+3. Ask which cities/zones to monitor
+4. Configure alert sounds
+5. Start the daemon via macOS launchd
+
+#### Update
+
+Re-run `/setup-red-alert` to change cities, zones, or sound preferences. Or reinstall from the repo:
+
+```bash
+cd claude-pulse && ./install.sh
+```
+
+#### Uninstall
+
+Run inside Claude Code:
+
+```
+/uninstall-red-alert
+```
+
+This stops the daemon, removes the launchd service, and cleans up alert settings. The base claude-pulse statusline stays installed.
+
+#### Manual Configuration
+
+You can also configure directly in `~/.claude/settings.json`:
 
 ```json
 {
@@ -237,23 +272,20 @@ To enable rocket alert notifications in your status line, add city names to your
 }
 ```
 
-Supports English city names (automatically mapped to Hebrew), Hebrew names, and substring matching.
+Supports English city names, Hebrew names, zone-specific names (e.g., `Tel Aviv - City Center`), and fuzzy substring matching.
 
-#### Modes
+#### Environment Variables
 
 | Variable | Values | Description |
 |----------|--------|-------------|
-| `RED_ALERT_CITIES` | comma-separated | Filter alerts to specific cities |
-| `RED_ALERT_MODE` | `all` / `mock` | `all` = show every alert. `mock` = offline test data |
+| `RED_ALERT_CITIES` | comma-separated | Filter alerts to specific cities/zones |
+| `RED_ALERT_MODE` | `all` / `mock` | `all` = every alert. `mock` = offline test data |
+| `RED_ALERT_SOUND` | `off` | Disable alert sounds |
+| `RED_ALERT_SOUND_COOLDOWN` | seconds | Min time between sounds (default 20) |
 
-**Examples:**
-```json
-{"env": {"RED_ALERT_CITIES": "Tel Aviv,Haifa"}}
-{"env": {"RED_ALERT_MODE": "all"}}
-{"env": {"RED_ALERT_MODE": "mock"}}
-```
+#### Architecture
 
-The background daemon auto-starts when either variable is set and auto-stops on exit. State is stored in `/tmp/red_alert_state.json`.
+The daemon runs as a macOS LaunchAgent, managed by launchd. It auto-starts when Claude Code opens (via SessionStart hook) and self-terminates ~30s after all Claude Code instances close (heartbeat mechanism). State is stored in `~/.local/state/claude-pulse/`.
 
 ### Model Detection
 

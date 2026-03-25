@@ -39,10 +39,13 @@ assert_contains "$output" "🟢" "expired alert shows daemon ON indicator"
 # test_city_filter: only matching cities shown
 export RED_ALERT_CITIES="Tel Aviv"
 unset RED_ALERT_MODE
-setup_mock_state "1" '["תל אביב - מרכז העיר","חיפה - כרמל"]'
+# State has both Hebrew and English cities
+cat > "$RED_ALERT_STATE_FILE" <<EOF
+{"alert_id":"test_123","cat":"1","title":"ירי רקטות וטילים","cities":["תל אביב - מרכז העיר","חיפה - כרמל"],"cities_en":["Tel Aviv - City Center","Haifa - Carmel"],"last_seen_unix":$(date +%s),"cleared_unix":0}
+EOF
 output=$(run_pulse)
-assert_contains "$output" "תל אביב" "city filter: Tel Aviv shown"
-assert_not_contains "$output" "חיפה" "city filter: Haifa filtered out"
+assert_contains "$output" "Tel Aviv" "city filter: Tel Aviv shown"
+assert_not_contains "$output" "Haifa" "city filter: Haifa filtered out"
 
 # test_mode_all: all cities shown regardless of filter
 export RED_ALERT_CITIES="Tel Aviv"
