@@ -122,7 +122,7 @@ After writing settings, start the daemon:
 # Stop any existing daemon
 launchctl unload ~/Library/LaunchAgents/com.claude-pulse.red-alert.plist 2>/dev/null || true
 pkill -9 -f red-alert-daemon 2>/dev/null || true
-rm -rf /tmp/red_alert_daemon.* /tmp/red_alert_last_sound /tmp/red_alert_state.json
+rm -f ~/.local/state/claude-pulse/red_alert_daemon.pid ~/.local/state/claude-pulse/red_alert_last_sound ~/.local/state/claude-pulse/red_alert_state.json
 
 # Update plist with env vars so daemon gets the user's config
 # The plist EnvironmentVariables dict needs RED_ALERT_CITIES/MODE/SOUND

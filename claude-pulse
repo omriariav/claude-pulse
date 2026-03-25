@@ -304,7 +304,7 @@ fi
 alert_segment=""
 if [[ -n "$RED_ALERT_CITIES" ]] || [[ -n "$RED_ALERT_MODE" ]]; then
     # Read alert state
-    _alert_state_file="${RED_ALERT_STATE_FILE:-/tmp/red_alert_state.json}"
+    _alert_state_file="${RED_ALERT_STATE_FILE:-$HOME/.local/state/claude-pulse/red_alert_state.json}"
     if [[ -f "$_alert_state_file" ]]; then
         alert_data=$(cat "$_alert_state_file" 2>/dev/null)
         alert_cat=$(echo "$alert_data" | jq -r '.cat // ""' 2>/dev/null)
@@ -448,7 +448,7 @@ fi
 # Alert status on 2nd line
 # No config → nothing. Config + daemon running, no alert → 🔔 green line. Active alert → 🚀 red line. No daemon → 🔕 grey line.
 if [[ -n "$RED_ALERT_CITIES" ]] || [[ -n "$RED_ALERT_MODE" ]]; then
-    _pid_file="${RED_ALERT_PID_FILE:-/tmp/red_alert_daemon.pid}"
+    _pid_file="${RED_ALERT_PID_FILE:-$HOME/.local/state/claude-pulse/red_alert_daemon.pid}"
     if [[ -f "$_pid_file" ]] && kill -0 "$(cat "$_pid_file" 2>/dev/null)" 2>/dev/null; then
         if [[ -z "$alert_segment" ]]; then
             alert_segment="\n\033[32m🟢 Alerts daemon ON${reset}"

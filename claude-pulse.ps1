@@ -294,56 +294,23 @@ if ($branch) {
     }
 }
 
-# Red Alert: auto-start daemon and read alert state
+# Red Alert: read-only — daemon is managed by launchd (macOS) or systemd (Linux)
 $alert_segment = ""
 if ($env:RED_ALERT_CITIES -or $env:RED_ALERT_MODE) {
-    # Auto-start daemon if not running
-    $daemon_script = Join-Path (Split-Path $MyInvocation.MyCommand.Path -Parent) "red-alert-daemon.sh"
-    if (Test-Path $daemon_script) {
-        $daemon_running = $false
-        $pid_file = if ($IsWindows) { Join-Path $env:TEMP "red_alert_daemon.pid" } else { "/tmp/red_alert_daemon.pid" }
-        if (Test-Path $pid_file) {
-            $daemon_pid = Get-Content $pid_file -ErrorAction SilentlyContinue
-            if ($daemon_pid) {
-                try { $proc = Get-Process -Id $daemon_pid -ErrorAction Stop; $daemon_running = $true } catch {}
-            }
-        }
-        if (-not $daemon_running) {
-            # Use Mutex as atomic lock to prevent multiple launches
-            $mutex = New-Object System.Threading.Mutex($false, "Global\RedAlertDaemonLock")
-            $acquired = $false
-            try {
-                $acquired = $mutex.WaitOne(0)
-                if ($acquired) {
-                    # Re-check PID after acquiring lock
-                    $still_needed = $true
-                    if (Test-Path $pid_file) {
-                        $daemon_pid = Get-Content $pid_file -ErrorAction SilentlyContinue
-                        if ($daemon_pid) {
-                            try { Get-Process -Id $daemon_pid -ErrorAction Stop; $still_needed = $false } catch {}
-                        }
-                    }
-                    if ($still_needed) {
-                        if ($IsWindows) {
-                            Start-Process -NoNewWindow -FilePath "bash" -ArgumentList $daemon_script -RedirectStandardOutput "NUL" -RedirectStandardError "NUL"
-                        } else {
-                            & nohup $daemon_script >> /tmp/red_alert_daemon.log 2>&1 &
-                        }
-                    }
-                }
-            } finally {
-                if ($acquired) { $mutex.ReleaseMutex() }
-                $mutex.Dispose()
-            }
-        }
-    }
+    # State/PID files use user-owned directory
+    $state_dir = if ($IsWindows) { Join-Path $env:LOCALAPPDATA "claude-pulse" } else { Join-Path $HOME ".local" "state" "claude-pulse" }
+    $state_file = Join-Path $state_dir "red_alert_state.json"
+    $pid_file = Join-Path $state_dir "red_alert_daemon.pid"
 
-    # Read alert state
-    $state_file = if ($IsWindows) { Join-Path $env:TEMP "red_alert_state.json" } else { "/tmp/red_alert_state.json" }
     if (Test-Path $state_file) {
-        $alert_data = Get-Content $state_file -Raw | ConvertFrom-Json
-        $alert_cat = $alert_data.cat
-        $alert_last_seen = [int]$alert_data.last_seen_unix
+        try {
+            $alert_data = Get-Content $state_file -Raw -ErrorAction Stop | ConvertFrom-Json
+        } catch {
+            $alert_data = $null
+        }
+        if ($alert_data) {
+            $alert_cat = $alert_data.cat
+            $alert_last_seen = [int]$alert_data.last_seen_unix
         $now = [int][DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
 
         # Determine if alert is active (within persistence windows)
@@ -432,6 +399,17 @@ if ($env:RED_ALERT_CITIES -or $env:RED_ALERT_MODE) {
                     $alert_segment = "`n${red_bg} ${alert_icon} ${alert_label} · ${count} cities · ${cycling_city} ${reset}"
                 }
             }
+        }
+        } # end if ($alert_data)
+    }
+
+    # Alert status indicator on 2nd line
+    if (-not $alert_segment) {
+        if ((Test-Path $pid_file) -and (Get-Content $pid_file -ErrorAction SilentlyContinue) -and
+            (try { Get-Process -Id (Get-Content $pid_file) -ErrorAction Stop; $true } catch { $false })) {
+            $alert_segment = "`n`e[32m🟢 Alerts daemon ON${reset}"
+        } else {
+            $alert_segment = "`n`e[90m🔕 Alerts daemon not running${reset}"
         }
     }
 }

@@ -3,9 +3,11 @@
 # Polls the official alert API every 2 seconds and writes state to disk
 # Supports: normal mode (API), all mode (API, no filter), mock mode (offline testing)
 
-STATE_FILE="/tmp/red_alert_state.json"
-PID_FILE="/tmp/red_alert_daemon.pid"
-LOG_FILE="/tmp/red_alert_daemon.log"
+STATE_DIR="${RED_ALERT_STATE_DIR:-$HOME/.local/state/claude-pulse}"
+mkdir -p "$STATE_DIR" 2>/dev/null
+STATE_FILE="${STATE_DIR}/red_alert_state.json"
+PID_FILE="${STATE_DIR}/red_alert_daemon.pid"
+LOG_FILE="${STATE_DIR}/red_alert_daemon.log"
 POLL_INTERVAL="${RED_ALERT_POLL_INTERVAL:-2}"
 API_URL="https://www.oref.org.il/warningMessages/alert/alerts.json"
 
@@ -22,7 +24,7 @@ MOCK_SCENARIOS=(
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 SOUND_DIR="${RED_ALERT_SOUND_DIR:-$SCRIPT_DIR/static}"
 DISTRICTS_FILE="${RED_ALERT_DISTRICTS_FILE:-$HOME/.claude/districts_eng.json}"
-SOUND_PLAYED_FILE="/tmp/red_alert_last_sound"
+SOUND_PLAYED_FILE="${STATE_DIR}/red_alert_last_sound"
 
 log() {
     echo "$(date '+%Y-%m-%d %H:%M:%S') $1" >> "$LOG_FILE"
@@ -107,8 +109,13 @@ while true; do
 
     if [[ "$RED_ALERT_MODE" == "mock" ]]; then
         # Mock mode: cycle through scenarios, no network calls
+        # Exit after one full cycle in mock mode
+        if (( mock_index >= ${#MOCK_SCENARIOS[@]} )); then
+            log "Mock cycle complete, exiting"
+            exit 0
+        fi
         mock_data="${MOCK_SCENARIOS[$mock_index]}"
-        mock_index=$(( (mock_index + 1) % ${#MOCK_SCENARIOS[@]} ))
+        mock_index=$(( mock_index + 1 ))
 
         if [[ "$mock_data" == "{}" ]] || [[ -z "$mock_data" ]]; then
             # Quiet period — write empty state

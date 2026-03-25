@@ -11,7 +11,8 @@ echo "Testing daemon..."
 
 # Create a patched daemon that uses temp paths
 patched_daemon="$TEST_TMPDIR/daemon.sh"
-sed "s|STATE_FILE=.*|STATE_FILE=\"$TEST_TMPDIR/state.json\"|;
+sed "s|STATE_DIR=.*|STATE_DIR=\"$TEST_TMPDIR\"|;
+     s|STATE_FILE=.*|STATE_FILE=\"$TEST_TMPDIR/state.json\"|;
      s|PID_FILE=.*|PID_FILE=\"$TEST_TMPDIR/daemon.pid\"|;
      s|LOG_FILE=.*|LOG_FILE=\"$TEST_TMPDIR/daemon.log\"|" "$DAEMON" > "$patched_daemon"
 chmod +x "$patched_daemon"
@@ -62,8 +63,8 @@ else
     ((FAIL_COUNT++))
 fi
 
-# test_daemon_cleanup: kill daemon, verify PID file removed
-kill "$daemon_pid" 2>/dev/null
+# test_daemon_cleanup: wait for mock cycle to finish, verify PID file removed
+# Mock mode exits after one cycle (6 scenarios × 1s interval)
 wait "$daemon_pid" 2>/dev/null
 sleep 1
 
@@ -77,6 +78,9 @@ fi
 
 # test_daemon_log_stop: log file has stop message
 assert_contains "$(cat "$TEST_TMPDIR/daemon.log")" "Daemon stopping" "daemon log has stop message"
+
+# test_mock_cycle_once: mock mode exits after one full cycle
+assert_contains "$(cat "$TEST_TMPDIR/daemon.log")" "Mock cycle complete" "mock mode exits after one cycle"
 
 cleanup
 report
