@@ -1,14 +1,13 @@
 # claude-pulse
 
-> Real-time token usage monitoring for Claude Code status line | **v2.2.1**
+> Real-time token usage monitoring for Claude Code status line | **v2.2.2**
 
 **claude-pulse** displays your current Claude Code token usage directly in your status line, helping you stay aware of context consumption without running `/context` manually.
 
-## New in v2.2.1: Smart Daemon Shutdown
+## New in v2.2.2: Fix Daemon Dying During Idle Sessions
 
-- **pgrep fast-path** - Daemon detects when Claude Code closes within ~6 seconds (3 consecutive `pgrep` misses), instead of waiting 5 minutes for heartbeat timeout
-- **Safe fallback** - If `pgrep` is unavailable, heartbeat timeout (300s) handles shutdown
-- **Heartbeat 300s** - Increased from 120s to survive long idle periods without restart churn
+- **pgrep suppresses heartbeat** - If `pgrep` confirms Claude Code is alive, heartbeat stale check is skipped. Previously both checks were independent, causing the daemon to die during idle sessions even though CC was running.
+- **No more missed alerts** - Daemon stays alive as long as Claude Code is open, even if the statusline hasn't refreshed in 5+ minutes.
 
 ## Previous Updates
 

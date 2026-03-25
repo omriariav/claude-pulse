@@ -1,5 +1,29 @@
 # Release Notes
 
+## v2.2.2 - Fix Daemon Dying During Idle Sessions
+
+**Released:** March 26, 2026
+
+### What's Fixed
+
+The daemon was dying during idle Claude Code sessions. Root cause: `pgrep` confirmed CC was alive but the heartbeat check killed the daemon independently (statusline doesn't refresh during long idle periods).
+
+Fix: if `pgrep` finds Claude Code, skip the heartbeat check entirely. Heartbeat is now fallback-only for when `pgrep` is unavailable.
+
+### Impact
+
+Previously, an idle CC session (e.g., left terminal open overnight) would lose the daemon after ~5 minutes. Real alerts during that window were missed — confirmed by a missed Tel Aviv alert wave at 01:29 on March 26.
+
+### Upgrade
+
+```bash
+cd claude-pulse
+git pull
+cp red-alert-daemon.sh ~/.claude/red-alert-daemon.sh
+```
+
+---
+
 ## v2.2.1 - pgrep Fast Shutdown + Safe pgrep Fallback
 
 **Released:** March 25, 2026
