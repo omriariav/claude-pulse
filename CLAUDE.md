@@ -12,7 +12,9 @@ The project consists of:
 
 - **`claude-pulse`**: Main bash script for macOS/Linux
 - **`claude-pulse.ps1`**: PowerShell version for Windows
+- **`red-alert-daemon.sh`**: Background daemon for Pikud HaOref alert polling
 - **`install.sh`**: Cross-platform installer
+- **`tests/`**: Test suite (run with `bash tests/run_tests.sh`)
 
 ### How claude-pulse works
 
@@ -47,6 +49,15 @@ The project consists of:
 - **Transcript structure**: User-typed prompts are NOT stored as plain text in `type: "user"` entries (those are mostly tool results). The `type: "assistant"` entries with `content[].type == "text"` contain the best topic signals
 - API call logic is extracted into reusable functions (`generate_name_via_api` in bash, `Get-ConversationName` in PowerShell) to avoid duplication
 
+### Red Alert feature
+
+- **Two-script architecture**: `red-alert-daemon.sh` polls the Pikud HaOref API in the background, writes state to `/tmp/red_alert_state.json`. `claude-pulse` reads this file (no network I/O in statusline).
+- **Auto-start**: Daemon launches automatically when `RED_ALERT_CITIES` or `RED_ALERT_MODE` is set. PID tracked at `/tmp/red_alert_daemon.pid`.
+- **City mapping**: English→Hebrew mapping uses a `case` statement (not `declare -A`) for bash 3.2 compatibility on macOS.
+- **Alert persistence**: Active alerts shown for 60s, pre-alerts for 20min, all-clear for 15s after last detection.
+- **Mock mode**: `RED_ALERT_MODE=mock` cycles through fake alerts for testing without API calls.
+- **Testable paths**: `RED_ALERT_STATE_FILE` and `RED_ALERT_PID_FILE` env vars override defaults for isolated testing.
+
 ## Development
 
 No build process - pure bash/PowerShell project. To test changes:
@@ -61,6 +72,12 @@ echo '{"cwd":"/test","model":{"id":"claude-opus-4-6"},"context_window":{"total_i
 # Install locally
 ./install.sh
 # Or manually: cp claude-pulse ~/.claude/statusline-command.sh
+
+# Run tests
+bash tests/run_tests.sh
+
+# Test with mock alerts
+RED_ALERT_MODE=mock echo '{"cwd":"/test","model":{"id":"claude-opus-4-6"},"context_window":{"total_input_tokens":50000,"total_output_tokens":5000,"context_window_size":200000}}' | ./claude-pulse
 ```
 
 ### Version bumping checklist

@@ -1,14 +1,35 @@
 # claude-pulse
 
-> Real-time token usage monitoring for Claude Code status line | **v1.7.1**
+> Real-time token usage monitoring for Claude Code status line | **v2.0.0**
 
 **claude-pulse** displays your current Claude Code token usage directly in your status line, helping you stay aware of context consumption without running `/context` manually.
 
-## New in v1.7.1: Context Window Label
+## New in v2.0.0: Red Alert (Pikud HaOref)
 
-- **Context size in status line** - Shows `(200k)` or `(1M)` next to the model name so you can tell at a glance whether you're in a standard or extended context session
+Real-time Pikud HaOref (Israel Home Front Command) rocket alert notifications in your statusline. Stay aware of alerts while coding. Inspired by [lirantal/red-alert-statusline](https://github.com/lirantal/red-alert-statusline).
+
+- **Real-time alerts** - Missiles, hostile aircraft, earthquakes, infiltration, drills, and more
+- **City & zone filtering** - Monitor specific cities or zones with fuzzy matching (English or Hebrew)
+- **English city names** - 1492 locations translated via official oref.org.il districts
+- **Alert sounds** - macOS m4a playback with configurable cooldown (20s default)
+- **launchd integration** - Daemon managed by macOS LaunchAgent, single instance guaranteed
+- **Three modes** - Normal (filtered), `all` (every alert), `mock` (offline testing)
+- **Interactive setup** - `/setup-red-alert` command with city/zone selection
+- **Test suite** - 51 tests across 3 suites
+
+```
+🧠 [████░░░░░░░░░░░░░░░░] 28% · 🤖 Opus 4.6 (200k) · 💬 Topic · 🌿 main 📁 ~/Code/project
+🚀 MISSILES · Tel Aviv - City Center · Ramat Gan - West
+
+🧠 [████░░░░░░░░░░░░░░░░] 28% · 🤖 Opus 4.6 (200k) · 💬 Topic · 🌿 main 📁 ~/Code/project
+🟢 Alerts daemon ON
+```
 
 ## Previous Updates
+
+### v1.7.1: Context Window Label
+
+- **Context size in status line** - Shows `(200k)` or `(1M)` next to the model name so you can tell at a glance whether you're in a standard or extended context session
 
 ### v1.7.0: Context Bar, Branch/PR, Cleaner Topic UX
 
@@ -204,6 +225,68 @@ The script tries APIs in this order: Anthropic → OpenAI → Gemini → Fallbac
 
 After adding your API key, restart your terminal or run `source ~/.zshrc` to apply.
 
+### Red Alert (Pikud HaOref)
+
+#### Setup
+
+Run the interactive setup command inside Claude Code:
+
+```
+/setup-red-alert
+```
+
+This will:
+1. Install the daemon and sound files
+2. Download city/district translations (1492 locations)
+3. Ask which cities/zones to monitor
+4. Configure alert sounds
+5. Start the daemon via macOS launchd
+
+#### Update
+
+Re-run `/setup-red-alert` to change cities, zones, or sound preferences. Or reinstall from the repo:
+
+```bash
+cd claude-pulse && ./install.sh
+```
+
+#### Uninstall
+
+Run inside Claude Code:
+
+```
+/uninstall-red-alert
+```
+
+This stops the daemon, removes the launchd service, and cleans up alert settings. The base claude-pulse statusline stays installed.
+
+#### Manual Configuration
+
+You can also configure directly in `~/.claude/settings.json`:
+
+```json
+{
+  "env": {
+    "RED_ALERT_CITIES": "Tel Aviv,Ramat Gan,Jerusalem"
+  }
+}
+```
+
+Supports English city names, Hebrew names, zone-specific names (e.g., `Tel Aviv - City Center`), and fuzzy substring matching.
+
+#### Environment Variables
+
+| Variable | Values | Description |
+|----------|--------|-------------|
+| `RED_ALERT_CITIES` | comma-separated | Filter alerts to specific cities/zones |
+| `RED_ALERT_MODE` | `all` / `mock` | `all` = every alert. `mock` = offline test data |
+| `RED_ALERT_SOUND` | `off` | Disable alert sounds |
+| `RED_ALERT_SOUND_COOLDOWN` | seconds | Min time between sounds (default 20) |
+
+#### Architecture
+
+The daemon runs as a macOS LaunchAgent, managed by launchd. It auto-starts when Claude Code opens (via SessionStart hook) and self-terminates ~30s after all Claude Code instances close (heartbeat mechanism). State is stored in `~/.local/state/claude-pulse/`.
+
 ### Model Detection
 
 The script automatically detects your model and sets the appropriate context limit. No additional configuration needed!
@@ -239,7 +322,13 @@ You can! But claude-pulse offers:
 
 ## Credits
 
-Inspired by [ccusage](https://github.com/ryoppippi/ccusage) by [@ryoppippi](https://github.com/ryoppippi).
+### Red Alert Feature
+
+The Red Alert feature was inspired by and built upon the work of [Liran Tal](https://github.com/lirantal) and his [red-alert-statusline](https://github.com/lirantal/red-alert-statusline) project. Liran's project pioneered the idea of bringing Pikud HaOref alerts into the Claude Code statusline, and our implementation follows many of the same architectural patterns — the two-script daemon model, the oref.org.il API integration, and the state-file approach for separating polling from display. Thank you, Liran, for the inspiration and for building tools that help keep developers in Israel safe while they work.
+
+### Token Usage
+
+Token usage monitoring inspired by [ccusage](https://github.com/ryoppippi/ccusage) by [@ryoppippi](https://github.com/ryoppippi).
 
 ## License
 
