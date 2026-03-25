@@ -119,6 +119,40 @@ cities_match_filter() {
     IFS=',' read -ra filters <<< "$RED_ALERT_CITIES"
     for filter in "${filters[@]}"; do
         filter=$(echo "$filter" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | tr '[:upper:]' '[:lower:]')
+        [[ -z "$filter" ]] && continue
+        # Map English filter to Hebrew (same map as statusline)
+        hebrew=""
+        case "$filter" in
+            "tel aviv") hebrew="תל אביב" ;;
+            "ramat gan") hebrew="רמת גן" ;;
+            "jerusalem") hebrew="ירושלים" ;;
+            "haifa") hebrew="חיפה" ;;
+            "beer sheva"|"beersheba"|"beersheva") hebrew="באר שבע" ;;
+            "ashdod") hebrew="אשדוד" ;;
+            "ashkelon") hebrew="אשקלון" ;;
+            "netanya") hebrew="נתניה" ;;
+            "herzliya") hebrew="הרצליה" ;;
+            "petah tikva") hebrew="פתח תקווה" ;;
+            "rishon lezion") hebrew="ראשון לציון" ;;
+            "holon") hebrew="חולון" ;;
+            "bat yam") hebrew="בת ים" ;;
+            "bnei brak") hebrew="בני ברק" ;;
+            "rehovot") hebrew="רחובות" ;;
+            "kfar saba") hebrew="כפר סבא" ;;
+            "ra'anana"|"raanana") hebrew="רעננה" ;;
+            "modiin") hebrew="מודיעין" ;;
+            "eilat") hebrew="אילת" ;;
+            "nazareth") hebrew="נצרת" ;;
+            "acre"|"akko") hebrew="עכו" ;;
+            "tiberias") hebrew="טבריה" ;;
+            "sderot") hebrew="שדרות" ;;
+            "kiryat shmona") hebrew="קריית שמונה" ;;
+            "nahariya") hebrew="נהריה" ;;
+            "lod") hebrew="לוד" ;;
+            "ramla") hebrew="רמלה" ;;
+            "givatayim") hebrew="גבעתיים" ;;
+            "hod hasharon") hebrew="הוד השרון" ;;
+        esac
         # Check against English city names
         while IFS= read -r city; do
             [[ -z "$city" ]] && continue
@@ -127,9 +161,12 @@ cities_match_filter() {
                 return 0
             fi
         done <<< "$(echo "$cities_en" | jq -r '.[]?' 2>/dev/null)"
-        # Check against Hebrew city names
+        # Check against Hebrew city names (mapped or direct)
         while IFS= read -r city; do
             [[ -z "$city" ]] && continue
+            if [[ -n "$hebrew" ]] && [[ "$city" == *"$hebrew"* ]]; then
+                return 0
+            fi
             if [[ "$city" == *"$filter"* ]]; then
                 return 0
             fi
