@@ -290,7 +290,13 @@ You can! But claude-pulse offers:
 
 ## Credits
 
-Inspired by [ccusage](https://github.com/ryoppippi/ccusage) by [@ryoppippi](https://github.com/ryoppippi).
+### Red Alert Feature
+
+The Red Alert feature was inspired by and built upon the work of [Liran Tal](https://github.com/lirantal) and his [red-alert-statusline](https://github.com/lirantal/red-alert-statusline) project. Liran's project pioneered the idea of bringing Pikud HaOref alerts into the Claude Code statusline, and our implementation follows many of the same architectural patterns — the two-script daemon model, the oref.org.il API integration, and the state-file approach for separating polling from display. Thank you, Liran, for the inspiration and for building tools that help keep developers in Israel safe while they work.
+
+### Token Usage
+
+Token usage monitoring inspired by [ccusage](https://github.com/ryoppippi/ccusage) by [@ryoppippi](https://github.com/ryoppippi).
 
 ## License
 
