@@ -1,5 +1,67 @@
 # Release Notes
 
+## v2.1.0 - Rate Limits + Alert Bug Fixes
+
+**Released:** March 25, 2026
+
+### What's New
+
+- **Rate limit display**: Shows `⚡ 5h: 23% · 7d: 5%` on 2nd line, color-coded like the context bar (green/yellow/red). Pro/Max subscribers only — API key users see nothing (graceful degradation).
+- **Sound city filtering**: Alert sounds now respect `RED_ALERT_CITIES` filter. Previously, sounds played for ALL alerts regardless of city config.
+- **Daemon auto-restart**: Statusline detects dead daemon and restarts via `launchctl kickstart`.
+- **No duplicate daemons**: `pgrep` guard prevents spawning multiple daemon processes from concurrent statusline refreshes.
+- **Empty filter fix**: Trailing commas in `RED_ALERT_CITIES` no longer cause match-all behavior.
+- **Hebrew fallback in daemon**: Daemon's city matching now has the same English→Hebrew map as the statusline, preventing sound/display disagreement.
+
+### Display Format
+
+```
+🧠 [████░░░░░░░░░░░░░░░░] 28% · 🤖 Opus 4.6 (200k) · 💬 Topic · 🌿 main 📁 ~/Code/project
+⚡ 5h: 23% · 7d: 5% · 🟢 Alerts daemon ON
+```
+
+With active alert:
+```
+🧠 [████░░░░░░░░░░░░░░░░] 28% · 🤖 Opus 4.6 (200k) · 💬 Topic · 🌿 main 📁 ~/Code/project
+⚡5h:39% 7d:8% · 🚀 MISSILES · Tel Aviv - City Center
+```
+
+### Upgrade
+
+```bash
+cd claude-pulse
+git pull
+./install.sh
+```
+
+---
+
+## v2.0.0 - Red Alert (Pikud HaOref)
+
+**Released:** March 25, 2026
+
+### What's New
+
+- **Real-time alerts**: Pikud HaOref rocket alert notifications in the statusline
+- **City & zone filtering**: Monitor specific cities or zones with fuzzy matching (English or Hebrew)
+- **English city names**: 1492 locations translated via official oref.org.il districts
+- **Alert sounds**: macOS m4a playback with configurable cooldown (20s default)
+- **launchd integration**: Daemon managed by macOS LaunchAgent, single instance guaranteed
+- **Heartbeat lifecycle**: Daemon self-terminates 30s after all Claude Code instances close
+- **Interactive setup**: `/setup-red-alert` command with city/zone selection
+- **Test suite**: 51 tests across 3 suites
+
+### Upgrade
+
+```bash
+cd claude-pulse
+git pull
+./install.sh
+/setup-red-alert
+```
+
+---
+
 ## v1.7.1 - Context Window Label
 
 **Released:** March 11, 2026

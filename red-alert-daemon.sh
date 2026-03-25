@@ -107,6 +107,74 @@ translate_cities() {
     ' <<< "$cities_json" 2>/dev/null || echo "$cities_json"
 }
 
+# Check if any alert cities match the user's filter (for sound decisions)
+# Returns 0 (true) if match found or mode=all, 1 (false) otherwise
+cities_match_filter() {
+    local cities_he="$1"
+    local cities_en="$2"
+    # Mode=all or no filter → always match
+    if [[ "$RED_ALERT_MODE" == "all" ]] || [[ -z "$RED_ALERT_CITIES" ]]; then
+        return 0
+    fi
+    IFS=',' read -ra filters <<< "$RED_ALERT_CITIES"
+    for filter in "${filters[@]}"; do
+        filter=$(echo "$filter" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | tr '[:upper:]' '[:lower:]')
+        [[ -z "$filter" ]] && continue
+        # Map English filter to Hebrew (same map as statusline)
+        hebrew=""
+        case "$filter" in
+            "tel aviv") hebrew="תל אביב" ;;
+            "ramat gan") hebrew="רמת גן" ;;
+            "jerusalem") hebrew="ירושלים" ;;
+            "haifa") hebrew="חיפה" ;;
+            "beer sheva"|"beersheba"|"beersheva") hebrew="באר שבע" ;;
+            "ashdod") hebrew="אשדוד" ;;
+            "ashkelon") hebrew="אשקלון" ;;
+            "netanya") hebrew="נתניה" ;;
+            "herzliya") hebrew="הרצליה" ;;
+            "petah tikva") hebrew="פתח תקווה" ;;
+            "rishon lezion") hebrew="ראשון לציון" ;;
+            "holon") hebrew="חולון" ;;
+            "bat yam") hebrew="בת ים" ;;
+            "bnei brak") hebrew="בני ברק" ;;
+            "rehovot") hebrew="רחובות" ;;
+            "kfar saba") hebrew="כפר סבא" ;;
+            "ra'anana"|"raanana") hebrew="רעננה" ;;
+            "modiin") hebrew="מודיעין" ;;
+            "eilat") hebrew="אילת" ;;
+            "nazareth") hebrew="נצרת" ;;
+            "acre"|"akko") hebrew="עכו" ;;
+            "tiberias") hebrew="טבריה" ;;
+            "sderot") hebrew="שדרות" ;;
+            "kiryat shmona") hebrew="קריית שמונה" ;;
+            "nahariya") hebrew="נהריה" ;;
+            "lod") hebrew="לוד" ;;
+            "ramla") hebrew="רמלה" ;;
+            "givatayim") hebrew="גבעתיים" ;;
+            "hod hasharon") hebrew="הוד השרון" ;;
+        esac
+        # Check against English city names
+        while IFS= read -r city; do
+            [[ -z "$city" ]] && continue
+            city_lower=$(echo "$city" | tr '[:upper:]' '[:lower:]')
+            if [[ "$city_lower" == *"$filter"* ]]; then
+                return 0
+            fi
+        done <<< "$(echo "$cities_en" | jq -r '.[]?' 2>/dev/null)"
+        # Check against Hebrew city names (mapped or direct)
+        while IFS= read -r city; do
+            [[ -z "$city" ]] && continue
+            if [[ -n "$hebrew" ]] && [[ "$city" == *"$hebrew"* ]]; then
+                return 0
+            fi
+            if [[ "$city" == *"$filter"* ]]; then
+                return 0
+            fi
+        done <<< "$(echo "$cities_he" | jq -r '.[]?' 2>/dev/null)"
+    done
+    return 1
+}
+
 # Write PID file (used by statusline to show 🔔 indicator)
 echo $$ > "$PID_FILE"
 log "Daemon started (PID $$, mode=${RED_ALERT_MODE:-normal})"
@@ -156,11 +224,13 @@ while true; do
             cities=$(echo "$mock_data" | jq -c '.data // []')
             cities_en=$(translate_cities "$cities")
             write_state "$(build_state "$alert_id" "$cat_val" "$title" "$cities" "$cities_en" "$now" 0)"
-            # Play sound for mock alerts
-            case "$cat_val" in
-                14) play_sound "$SOUND_DIR/early.m4a" "$alert_id" ;;
-                1|2|3|4|5|6|7|101|102|103|104|105|106|107) play_sound "$SOUND_DIR/go.m4a" "$alert_id" ;;
-            esac
+            # Play sound only if cities match user's filter
+            if cities_match_filter "$cities" "$cities_en"; then
+                case "$cat_val" in
+                    14) play_sound "$SOUND_DIR/early.m4a" "$alert_id" ;;
+                    1|2|3|4|5|6|7|101|102|103|104|105|106|107) play_sound "$SOUND_DIR/go.m4a" "$alert_id" ;;
+                esac
+            fi
         fi
 
         sleep "${RED_ALERT_MOCK_INTERVAL:-10}"
@@ -211,14 +281,18 @@ while true; do
             log "Pre-alert received (id: $alert_id)"
             cities_en=$(translate_cities "$cities")
             write_state "$(build_state "$alert_id" "14" "$title" "$cities" "$cities_en" "$now" 0)"
-            play_sound "$SOUND_DIR/early.m4a" "$alert_id"
+            if cities_match_filter "$cities" "$cities_en"; then
+                play_sound "$SOUND_DIR/early.m4a" "$alert_id"
+            fi
             ;;
         1|2|3|4|5|6|7|8|9|10|11|12|101|102|103|104|105|106|107)
             # Active alert or drill
             log "ALERT cat=$cat_val id=$alert_id cities=$cities"
             cities_en=$(translate_cities "$cities")
             write_state "$(build_state "$alert_id" "$cat_val" "$title" "$cities" "$cities_en" "$now" 0)"
-            play_sound "$SOUND_DIR/go.m4a" "$alert_id"
+            if cities_match_filter "$cities" "$cities_en"; then
+                play_sound "$SOUND_DIR/go.m4a" "$alert_id"
+            fi
             ;;
         *)
             log "Unknown category: $cat_val"

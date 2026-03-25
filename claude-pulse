@@ -499,8 +499,10 @@ if [[ -n "$RED_ALERT_CITIES" ]] || [[ -n "$RED_ALERT_MODE" ]]; then
             alert_indicator="\033[32m🟢 Alerts daemon ON${reset}"
         fi
     else
-        # Auto-restart daemon via launchctl
-        launchctl kickstart "gui/$(id -u)/com.claude-pulse.red-alert" 2>/dev/null
+        # Auto-restart daemon via launchctl (only if the installed daemon isn't running)
+        if ! pgrep -f "$HOME/.claude/red-alert-daemon.sh" >/dev/null 2>&1; then
+            launchctl kickstart "gui/$(id -u)/com.claude-pulse.red-alert" 2>/dev/null
+        fi
         alert_indicator="\033[90m🔕 Alerts daemon not running${reset}"
     fi
 fi
