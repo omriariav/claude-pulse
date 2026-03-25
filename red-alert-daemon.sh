@@ -189,20 +189,25 @@ if ! mkdir "$LOCK_DIR" 2>/dev/null; then
     if [[ -f "$LOCK_PID" ]]; then
         existing_pid=$(cat "$LOCK_PID" 2>/dev/null)
         if [[ -n "$existing_pid" ]] && kill -0 "$existing_pid" 2>/dev/null; then
+            [[ -n "$RED_ALERT_DEBUG" ]] && log "DEBUG: Lock held by live PID $existing_pid, exiting"
             exit 0
         fi
     fi
     # Stale lock (dead process or no pid yet) — wait briefly then check again
+    [[ -n "$RED_ALERT_DEBUG" ]] && log "DEBUG: Lock exists but no live PID, waiting 1s..."
     sleep 1
     if [[ -f "$LOCK_PID" ]]; then
         existing_pid=$(cat "$LOCK_PID" 2>/dev/null)
         if [[ -n "$existing_pid" ]] && kill -0 "$existing_pid" 2>/dev/null; then
+            [[ -n "$RED_ALERT_DEBUG" ]] && log "DEBUG: PID $existing_pid appeared after wait, exiting"
             exit 0
         fi
     fi
     # Truly stale — reclaim
+    [[ -n "$RED_ALERT_DEBUG" ]] && log "DEBUG: Reclaiming stale lock (PID was: $(cat "$LOCK_PID" 2>/dev/null || echo 'none'))"
     rm -rf "$LOCK_DIR"
     if ! mkdir "$LOCK_DIR" 2>/dev/null; then
+        [[ -n "$RED_ALERT_DEBUG" ]] && log "DEBUG: Failed to reclaim lock, another process won, exiting"
         exit 0
     fi
 fi
