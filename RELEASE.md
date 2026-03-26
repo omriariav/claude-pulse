@@ -10,6 +10,8 @@ v2.4.1 only merged pre-alert cities. This release also merges main alert cities.
 
 Added 11 tests covering all merge paths: main alert merge, pre-alert merge, back-to-back pre-alerts, expiry boundary, same-ID dedup, and cross-category non-merge.
 
+Also fixed the SessionStart hook: `launchctl load` errors when the service is already running via `RunAtLoad`. Now checks if loaded first. The `/setup-red-alert` command now configures this hook automatically.
+
 ### Upgrade
 
 ```bash

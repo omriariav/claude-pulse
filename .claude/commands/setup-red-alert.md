@@ -140,7 +140,8 @@ Also set `KeepAlive` and `RunAtLoad` to `<true/>` so the daemon auto-starts.
 Then load and start:
 
 ```bash
-launchctl load ~/Library/LaunchAgents/com.claude-pulse.red-alert.plist
+launchctl list | grep -q com.claude-pulse.red-alert || launchctl load ~/Library/LaunchAgents/com.claude-pulse.red-alert.plist
+launchctl kickstart -k "gui/$(id -u)/com.claude-pulse.red-alert" >/dev/null 2>&1 || true
 ```
 
 Verify it's running:
@@ -149,11 +150,36 @@ Verify it's running:
 launchctl list | grep claude-pulse
 ```
 
-### 7. Confirm
+### 7. Configure SessionStart hook
+
+Add a `SessionStart` hook to `~/.claude/settings.json` so the daemon starts automatically when Claude Code opens. Use the Edit tool to add this inside the top-level object (merge with existing hooks if any):
+
+```json
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "launchctl list | grep -q com.claude-pulse.red-alert || launchctl load ~/Library/LaunchAgents/com.claude-pulse.red-alert.plist; launchctl kickstart -k \"gui/$(id -u)/com.claude-pulse.red-alert\" >/dev/null 2>&1; true",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+The hook checks if the service is already loaded before trying to load it, avoiding errors when the daemon is already running via `RunAtLoad`.
+
+### 8. Confirm
 
 Tell the user:
 - "Red Alert is active! 🔔 indicator should appear in your statusline."
 - Show their settings (cities, sound on/off)
 - "Daemon managed by launchd — survives Claude Code restarts."
+- "SessionStart hook installed — daemon auto-starts with each Claude Code session."
 - "To stop: `launchctl unload ~/Library/LaunchAgents/com.claude-pulse.red-alert.plist`"
 - "Restart Claude Code to pick up env var changes."
