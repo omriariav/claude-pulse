@@ -1,5 +1,5 @@
 #!/bin/bash
-# claude-pulse v2.3.2: Real-time token usage for Claude Code status line
+# claude-pulse v2.4.0: Real-time token usage for Claude Code status line
 # Uses billing API (transcript) for accurate FULL context usage
 # Falls back to native context_window when transcript unavailable
 # Displays current model name and AI-generated conversation names
@@ -8,15 +8,27 @@
 # Read JSON input from stdin
 input=$(cat)
 
-# Extract values from JSON
-cwd=$(echo "$input" | jq -r '.cwd')
-transcript_path=$(echo "$input" | jq -r '.transcript_path')
-session_id=$(echo "$input" | jq -r '.session_id')
-model_id=$(echo "$input" | jq -r '.model.id // "claude-sonnet-4-5-20250929"')
+# ANSI color codes (single source of truth)
+C_RED="\033[31m"
+C_GREEN="\033[32m"
+C_YELLOW="\033[33m"
+C_GRAY="\033[90m"
+C_RESET="\033[0m"
+C_RED_BG="\033[41;97m"
+C_GREEN_BG="\033[42;97m"
+C_YELLOW_BG="\033[43;30m"
 
-# Extract rate limit data (available in newer Claude Code versions)
-rate_5h=$(echo "$input" | jq -r '.rate_limits.five_hour.used_percentage // empty' 2>/dev/null)
-rate_7d=$(echo "$input" | jq -r '.rate_limits.seven_day.used_percentage // empty' 2>/dev/null)
+# Extract values from JSON (single jq call, Unit Separator delimiter)
+IFS=$'\x1f' read -r cwd transcript_path session_id model_id rate_5h rate_7d < <(
+    echo "$input" | jq -j '[
+        .cwd // "",
+        .transcript_path // "",
+        .session_id // "",
+        .model.id // "claude-sonnet-4-5-20250929",
+        (.rate_limits.five_hour.used_percentage // "" | tostring),
+        (.rate_limits.seven_day.used_percentage // "" | tostring)
+    ] | join("\u001f")' 2>/dev/null
+)
 
 # Convert model ID to friendly name
 case "$model_id" in
@@ -90,9 +102,13 @@ fi
 
 # Fallback: Native context_window (conversation only, missing MCP/system overhead)
 if [[ -z "$input_tokens" ]] || [[ "$input_tokens" == "null" ]]; then
-    native_input=$(echo "$input" | jq -r '.context_window.total_input_tokens // null')
-    native_output=$(echo "$input" | jq -r '.context_window.total_output_tokens // null')
-    native_limit=$(echo "$input" | jq -r '.context_window.context_window_size // null')
+    IFS=$'\x1f' read -r native_input native_output native_limit < <(
+        echo "$input" | jq -j '[
+            .context_window.total_input_tokens // null,
+            .context_window.total_output_tokens // null,
+            .context_window.context_window_size // null
+        ] | join("\u001f")' 2>/dev/null
+    )
 
     if [[ "$native_input" != "null" ]] && [[ -n "$native_input" ]]; then
         input_tokens=$((native_input + native_output))
@@ -133,13 +149,13 @@ bar+="]"
 
 # Color based on usage (green=low, yellow=moderate, red=high)
 if (( percent >= 80 )); then
-    color="\033[31m"  # Red — running high
+    color="$C_RED"
 elif (( percent >= 50 )); then
-    color="\033[33m"  # Yellow — moderate usage
+    color="$C_YELLOW"
 else
-    color="\033[32m"  # Green — plenty of room
+    color="$C_GREEN"
 fi
-reset="\033[0m"
+reset="$C_RESET"
 
 # Cache directory for conversation names and PR lookups
 cache_dir="$HOME/.cache/claude-pulse"
@@ -304,6 +320,131 @@ if [[ -n "$branch" ]]; then
     fi
 fi
 
+# Evaluate alert display state: "active", "recent", or "expired"
+# Args: $1=cat, $2=display_until, $3=first_seen, $4=last_seen, $5=now
+evaluate_alert() {
+    local cat="$1" display_until="$2" first_seen="$3" last_seen="$4" now="$5"
+    if [[ -z "$cat" ]] || [[ "$cat" == "null" ]]; then echo "expired"; return; fi
+    if [[ "$display_until" != "0" ]] && [[ "$display_until" != "null" ]] && [[ -n "$display_until" ]]; then
+        if (( now <= display_until )); then echo "active"; return; fi
+        if (( first_seen > 0 )) && (( now - first_seen <= 300 )); then echo "recent"; return; fi
+    else
+        local age=$(( now - last_seen ))
+        case "$cat" in
+            13) (( age <= 15 )) && { echo "active"; return; } ;;
+            14) (( age <= 1200 )) && { echo "active"; return; } ;;
+            *)  (( age <= 60 )) && { echo "active"; return; } ;;
+        esac
+    fi
+    echo "expired"
+}
+
+# Filter alert cities based on RED_ALERT_CITIES config
+# SYNC: keep in sync with red-alert-daemon.sh:cities_match_filter()
+# Args: $1=cities_en (newline-sep), $2=cities_he (newline-sep)
+# Reads: RED_ALERT_MODE, RED_ALERT_CITIES globals
+# Outputs: filtered city list on stdout
+filter_alert_cities() {
+    local all_cities_en="$1"
+    local all_cities_he="$2"
+    local all_cities
+    if [[ -n "$all_cities_en" ]]; then all_cities="$all_cities_en"; else all_cities="$all_cities_he"; fi
+
+    # No filtering if mode=all or no filter set
+    if [[ "$RED_ALERT_MODE" == "all" ]] || [[ -z "$RED_ALERT_CITIES" ]]; then
+        echo "$all_cities"
+        return
+    fi
+
+    local filtered=""
+    local city_filters
+    IFS=',' read -ra city_filters <<< "$RED_ALERT_CITIES"
+    local city_en_arr=() city_he_arr=()
+    while IFS= read -r c; do [[ -n "$c" ]] && city_en_arr+=("$c"); done <<< "$all_cities_en"
+    while IFS= read -r c; do [[ -n "$c" ]] && city_he_arr+=("$c"); done <<< "$all_cities_he"
+    # Fallback: if cities_en is missing, iterate Hebrew cities as both display and match source
+    if [[ ${#city_en_arr[@]} -eq 0 ]] && [[ ${#city_he_arr[@]} -gt 0 ]]; then
+        city_en_arr=("${city_he_arr[@]}")
+    fi
+
+    local i city city_he filter hebrew city_lower
+    for i in "${!city_en_arr[@]}"; do
+        city="${city_en_arr[$i]}"
+        city_he="${city_he_arr[$i]:-}"
+        [[ -z "$city" ]] && continue
+        for filter in "${city_filters[@]}"; do
+            filter=$(echo "$filter" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | tr '[:upper:]' '[:lower:]')
+            [[ -z "$filter" ]] && continue
+            # Map English filter to Hebrew for cross-language matching
+            hebrew=""
+            case "$filter" in
+                "tel aviv") hebrew="תל אביב" ;;
+                "ramat gan") hebrew="רמת גן" ;;
+                "jerusalem") hebrew="ירושלים" ;;
+                "haifa") hebrew="חיפה" ;;
+                "beer sheva"|"beersheba"|"beersheva") hebrew="באר שבע" ;;
+                "ashdod") hebrew="אשדוד" ;;
+                "ashkelon") hebrew="אשקלון" ;;
+                "netanya") hebrew="נתניה" ;;
+                "herzliya") hebrew="הרצליה" ;;
+                "petah tikva") hebrew="פתח תקווה" ;;
+                "rishon lezion") hebrew="ראשון לציון" ;;
+                "holon") hebrew="חולון" ;;
+                "bat yam") hebrew="בת ים" ;;
+                "bnei brak") hebrew="בני ברק" ;;
+                "rehovot") hebrew="רחובות" ;;
+                "kfar saba") hebrew="כפר סבא" ;;
+                "ra'anana"|"raanana") hebrew="רעננה" ;;
+                "modiin") hebrew="מודיעין" ;;
+                "eilat") hebrew="אילת" ;;
+                "nazareth") hebrew="נצרת" ;;
+                "acre"|"akko") hebrew="עכו" ;;
+                "tiberias") hebrew="טבריה" ;;
+                "sderot") hebrew="שדרות" ;;
+                "kiryat shmona") hebrew="קריית שמונה" ;;
+                "nahariya") hebrew="נהריה" ;;
+                "lod") hebrew="לוד" ;;
+                "ramla") hebrew="רמלה" ;;
+                "givatayim") hebrew="גבעתיים" ;;
+                "hod hasharon") hebrew="הוד השרון" ;;
+            esac
+            # Check Hebrew mapped match
+            if [[ -n "$hebrew" ]] && [[ -n "$city_he" ]] && [[ "$city_he" == *"$hebrew"* ]]; then
+                filtered="${filtered}${city}"$'\n'; break
+            fi
+            # Check Hebrew filter directly
+            if [[ -n "$city_he" ]] && [[ "$city_he" == *"$filter"* ]]; then
+                filtered="${filtered}${city}"$'\n'; break
+            fi
+            # Fuzzy English match
+            city_lower=$(echo "$city" | tr '[:upper:]' '[:lower:]')
+            if [[ "$city_lower" == *"$filter"* ]] || [[ "$city" == *"$filter"* ]]; then
+                filtered="${filtered}${city}"$'\n'; break
+            fi
+        done
+    done
+    echo "$filtered" | sed '/^$/d'
+}
+
+# Get icon and label for alert category
+_alert_icon_label() {
+    case "$1" in
+        1)   echo "🚀"; echo "MISSILES" ;;
+        2)   echo "✈️";  echo "AIRCRAFT" ;;
+        3)   echo "🌍"; echo "EARTHQUAKE" ;;
+        4)   echo "🌊"; echo "TSUNAMI" ;;
+        5)   echo "☢️";  echo "RADIOLOGICAL" ;;
+        6)   echo "✈️";  echo "UAV" ;;
+        7)   echo "🔫"; echo "INFILTRATION" ;;
+        8|9|11|12) echo "⚠️"; echo "ALERT" ;;
+        13)  echo "✅"; echo "ALL CLEAR" ;;
+        14)  echo "⚠️";  echo "PRE-ALERT" ;;
+        101|102|103|104|105|106|107)
+             echo "🔔"; echo "DRILL" ;;
+        *)   echo "⚠️";  echo "ALERT" ;;
+    esac
+}
+
 # Red Alert: read-only — daemon is managed by launchd (macOS) or systemd (Linux)
 alert_segment=""
 if [[ -n "$RED_ALERT_CITIES" ]] || [[ -n "$RED_ALERT_MODE" ]]; then
@@ -315,237 +456,116 @@ if [[ -n "$RED_ALERT_CITIES" ]] || [[ -n "$RED_ALERT_MODE" ]]; then
     _alert_state_file="${RED_ALERT_STATE_FILE:-$HOME/.local/state/claude-pulse/red_alert_state.json}"
     if [[ -f "$_alert_state_file" ]]; then
         alert_data=$(cat "$_alert_state_file" 2>/dev/null)
-        alert_cat=$(echo "$alert_data" | jq -r '.cat // ""' 2>/dev/null)
-        alert_last_seen=$(echo "$alert_data" | jq -r '.last_seen_unix // 0' 2>/dev/null)
-        alert_cleared=$(echo "$alert_data" | jq -r '.cleared_unix // 0' 2>/dev/null)
-        alert_first_seen=$(echo "$alert_data" | jq -r '.first_seen_unix // 0' 2>/dev/null)
-        alert_display_until=$(echo "$alert_data" | jq -r '.display_until_unix // 0' 2>/dev/null)
         now=$(date +%s)
 
-        # Determine alert display state
-        # Priority: missile/UAV (1/2/6) > pre-alert (14) > recent > daemon status
-        alert_active=false
-        alert_recent=false
-        if [[ -n "$alert_cat" ]] && [[ "$alert_cat" != "" ]] && [[ "$alert_cat" != "null" ]]; then
-            if [[ "$alert_display_until" != "0" ]] && [[ "$alert_display_until" != "null" ]]; then
-                if (( now <= alert_display_until )); then
-                    alert_active=true
-                elif (( alert_first_seen > 0 )) && (( now - alert_first_seen <= 300 )); then
-                    alert_recent=true
-                fi
-            else
-                age=$(( now - alert_last_seen ))
-                case "$alert_cat" in
-                    13) (( age <= 15 )) && alert_active=true ;;
-                    14) (( age <= 1200 )) && alert_active=true ;;
-                    *) (( age <= 60 )) && alert_active=true ;;
-                esac
-            fi
+        # Extract all main alert fields in one jq call
+        IFS=$'\x1f' read -r main_cat main_last_seen main_cleared main_first_seen \
+            main_display_until main_alert_id _pre_alert_json < <(
+            echo "$alert_data" | jq -j '[
+                .cat // "", .last_seen_unix // 0, .cleared_unix // 0,
+                .first_seen_unix // 0, .display_until_unix // 0,
+                .alert_id // "", (.pre_alert // null | tostring)
+            ] | join("\u001f")' 2>/dev/null
+        )
+
+        # Evaluate main alert state
+        main_state=$(evaluate_alert "$main_cat" "$main_display_until" "$main_first_seen" "$main_last_seen" "$now")
+
+        # Extract pre_alert fields in one jq call (if exists)
+        pre_cat="" pre_display_until="0" pre_first_seen="0" pre_last_seen="0" pre_alert_id=""
+        if [[ -n "$_pre_alert_json" ]] && [[ "$_pre_alert_json" != "null" ]]; then
+            IFS=$'\x1f' read -r pre_cat pre_display_until pre_first_seen pre_last_seen pre_alert_id < <(
+                echo "$_pre_alert_json" | jq -j '[
+                    .cat // "", .display_until_unix // 0, .first_seen_unix // 0,
+                    .last_seen_unix // 0, .alert_id // ""
+                ] | join("\u001f")' 2>/dev/null
+            )
         fi
 
-        # If main alert not actively showing (expired or only recent), check pre_alert
-        # Priority: missile active > pre-alert active > missile recent > daemon status
-        if [[ "$alert_active" == "false" ]]; then
-            _pre_alert=$(echo "$alert_data" | jq -r '.pre_alert // null' 2>/dev/null)
-            if [[ -n "$_pre_alert" ]] && [[ "$_pre_alert" != "null" ]]; then
-                _pre_cat=$(echo "$_pre_alert" | jq -r '.cat // ""' 2>/dev/null)
-                _pre_display_until=$(echo "$_pre_alert" | jq -r '.display_until_unix // 0' 2>/dev/null)
-                _pre_first_seen=$(echo "$_pre_alert" | jq -r '.first_seen_unix // 0' 2>/dev/null)
-                if [[ "$_pre_display_until" != "0" ]] && (( now <= _pre_display_until )); then
-                    # Pre-alert still active — use it
-                    alert_cat="$_pre_cat"
-                    alert_first_seen="$_pre_first_seen"
-                    alert_display_until="$_pre_display_until"
-                    alert_data="$_pre_alert"
-                    alert_active=true
-                fi
-            fi
+        # Evaluate pre_alert state
+        pre_state=$(evaluate_alert "$pre_cat" "$pre_display_until" "$pre_first_seen" "$pre_last_seen" "$now")
+
+        # Extract cities for main alert (1 jq call)
+        main_cities_en=$(echo "$alert_data" | jq -r '.cities_en[]?' 2>/dev/null)
+        main_cities_he=$(echo "$alert_data" | jq -r '.cities[]?' 2>/dev/null)
+
+        # Filter cities for main alert
+        main_filtered=$(filter_alert_cities "$main_cities_en" "$main_cities_he")
+
+        # Extract and filter cities for pre_alert (1 jq call, only if needed)
+        pre_filtered=""
+        if [[ "$pre_state" != "expired" ]] && [[ -n "$_pre_alert_json" ]] && [[ "$_pre_alert_json" != "null" ]]; then
+            pre_cities_en=$(echo "$_pre_alert_json" | jq -r '.cities_en[]?' 2>/dev/null)
+            pre_cities_he=$(echo "$_pre_alert_json" | jq -r '.cities[]?' 2>/dev/null)
+            pre_filtered=$(filter_alert_cities "$pre_cities_en" "$pre_cities_he")
         fi
 
-        if [[ "$alert_active" == "true" ]] || [[ "$alert_recent" == "true" ]]; then
-            # Get alert icon and label
-            case "$alert_cat" in
-                1)   alert_icon="🚀"; alert_label="MISSILES" ;;
-                2)   alert_icon="✈️";  alert_label="AIRCRAFT" ;;
-                3)   alert_icon="🌍"; alert_label="EARTHQUAKE" ;;
-                4)   alert_icon="🌊"; alert_label="TSUNAMI" ;;
-                5)   alert_icon="☢️";  alert_label="RADIOLOGICAL" ;;
-                6)   alert_icon="✈️";  alert_label="UAV" ;;
-                7)   alert_icon="🔫"; alert_label="INFILTRATION" ;;
-                8|9|11|12) alert_icon="⚠️"; alert_label="ALERT" ;;
-                13)  alert_icon="✅"; alert_label="ALL CLEAR" ;;
-                14)  alert_icon="⚠️";  alert_label="PRE-ALERT" ;;
-                101|102|103|104|105|106|107)
-                     alert_icon="🔔"; alert_label="DRILL" ;;
-                *)   alert_icon="⚠️";  alert_label="ALERT" ;;
-            esac
+        # Winner selection matrix:
+        # 1. Main active + city-specific cat + matching cities → red banner
+        # 2. Pre active + matching cities → yellow banner
+        # 3. Main active + global cat (13 all-clear) → green text
+        # 4. Main active + global cat (14 pre-alert) → yellow text
+        # 5. Main recent + matching cities → red "Recent" text
+        # 6. Else → daemon status only
+        winner="" winner_cat="" winner_filtered="" winner_first_seen="" winner_alert_id=""
+        winner_state=""
 
-            # Get cities from state (both English and Hebrew for filtering)
-            all_cities_en=$(echo "$alert_data" | jq -r '.cities_en[]?' 2>/dev/null)
-            all_cities_he=$(echo "$alert_data" | jq -r '.cities[]?' 2>/dev/null)
-            # Display English if available, otherwise Hebrew
-            if [[ -n "$all_cities_en" ]]; then
-                all_cities="$all_cities_en"
-            else
-                all_cities="$all_cities_he"
+        if [[ "$main_state" == "active" ]] && [[ -n "$main_filtered" ]] && [[ "$main_cat" != "13" ]] && [[ "$main_cat" != "14" ]]; then
+            winner="main"; winner_cat="$main_cat"; winner_filtered="$main_filtered"
+            winner_first_seen="$main_first_seen"; winner_alert_id="$main_alert_id"; winner_state="active"
+        elif [[ "$pre_state" == "active" ]] && [[ -n "$pre_filtered" ]]; then
+            winner="pre"; winner_cat="$pre_cat"; winner_filtered="$pre_filtered"
+            winner_first_seen="$pre_first_seen"; winner_alert_id="$pre_alert_id"; winner_state="active"
+        elif [[ "$main_state" == "active" ]] && [[ "$main_cat" == "13" ]]; then
+            winner="main"; winner_cat="$main_cat"; winner_filtered=""
+            winner_first_seen="$main_first_seen"; winner_alert_id="$main_alert_id"; winner_state="active"
+        elif [[ "$main_state" == "active" ]] && [[ "$main_cat" == "14" ]]; then
+            winner="main"; winner_cat="$main_cat"; winner_filtered=""
+            winner_first_seen="$main_first_seen"; winner_alert_id="$main_alert_id"; winner_state="active"
+        elif [[ "$main_state" == "recent" ]] && [[ -n "$main_filtered" ]]; then
+            winner="main"; winner_cat="$main_cat"; winner_filtered="$main_filtered"
+            winner_first_seen="$main_first_seen"; winner_alert_id="$main_alert_id"; winner_state="recent"
+        fi
+
+        # Render winner
+        if [[ -n "$winner" ]]; then
+            icon_label=$(_alert_icon_label "$winner_cat")
+            alert_icon=$(echo "$icon_label" | head -1)
+            alert_label=$(echo "$icon_label" | tail -1)
+
+            # Check if this is a mock/test alert
+            alert_test_prefix=""
+            if [[ "$winner_alert_id" == mock_* ]]; then
+                alert_test_prefix="TEST "
             fi
 
-            # City filtering (unless mode=all)
-            if [[ "$RED_ALERT_MODE" == "all" ]] || [[ -z "$RED_ALERT_CITIES" ]]; then
-                filtered_cities="$all_cities"
-            else
-                filtered_cities=""
-                IFS=',' read -ra city_filters <<< "$RED_ALERT_CITIES"
-                # Build parallel arrays: English display names + Hebrew originals
-                city_en_arr=()
-                city_he_arr=()
-                while IFS= read -r c; do [[ -n "$c" ]] && city_en_arr+=("$c"); done <<< "$all_cities_en"
-                while IFS= read -r c; do [[ -n "$c" ]] && city_he_arr+=("$c"); done <<< "$all_cities_he"
-
-                for i in "${!city_en_arr[@]}"; do
-                    city="${city_en_arr[$i]}"
-                    city_he="${city_he_arr[$i]:-}"
-                    [[ -z "$city" ]] && continue
-                    for filter in "${city_filters[@]}"; do
-                        filter=$(echo "$filter" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | tr '[:upper:]' '[:lower:]')
-                        # Map English filter to Hebrew for cross-language matching
-                        hebrew=""
-                        case "$filter" in
-                            "tel aviv") hebrew="תל אביב" ;;
-                            "ramat gan") hebrew="רמת גן" ;;
-                            "jerusalem") hebrew="ירושלים" ;;
-                            "haifa") hebrew="חיפה" ;;
-                            "beer sheva"|"beersheba"|"beersheva") hebrew="באר שבע" ;;
-                            "ashdod") hebrew="אשדוד" ;;
-                            "ashkelon") hebrew="אשקלון" ;;
-                            "netanya") hebrew="נתניה" ;;
-                            "herzliya") hebrew="הרצליה" ;;
-                            "petah tikva") hebrew="פתח תקווה" ;;
-                            "rishon lezion") hebrew="ראשון לציון" ;;
-                            "holon") hebrew="חולון" ;;
-                            "bat yam") hebrew="בת ים" ;;
-                            "bnei brak") hebrew="בני ברק" ;;
-                            "rehovot") hebrew="רחובות" ;;
-                            "kfar saba") hebrew="כפר סבא" ;;
-                            "ra'anana"|"raanana") hebrew="רעננה" ;;
-                            "modiin") hebrew="מודיעין" ;;
-                            "eilat") hebrew="אילת" ;;
-                            "nazareth") hebrew="נצרת" ;;
-                            "acre"|"akko") hebrew="עכו" ;;
-                            "tiberias") hebrew="טבריה" ;;
-                            "sderot") hebrew="שדרות" ;;
-                            "kiryat shmona") hebrew="קריית שמונה" ;;
-                            "nahariya") hebrew="נהריה" ;;
-                            "lod") hebrew="לוד" ;;
-                            "ramla") hebrew="רמלה" ;;
-                            "givatayim") hebrew="גבעתיים" ;;
-                            "hod hasharon") hebrew="הוד השרון" ;;
-                        esac
-                        # Check Hebrew match against Hebrew city name
-                        if [[ -n "$hebrew" ]] && [[ -n "$city_he" ]] && [[ "$city_he" == *"$hebrew"* ]]; then
-                            filtered_cities="${filtered_cities}${city}"$'\n'
-                            break
-                        fi
-                        # Check Hebrew filter directly against Hebrew city name
-                        if [[ -n "$city_he" ]] && [[ "$city_he" == *"$filter"* ]]; then
-                            filtered_cities="${filtered_cities}${city}"$'\n'
-                            break
-                        fi
-                        # Fuzzy match: substring on English city name
-                        city_lower=$(echo "$city" | tr '[:upper:]' '[:lower:]')
-                        if [[ "$city_lower" == *"$filter"* ]] || [[ "$city" == *"$filter"* ]]; then
-                            filtered_cities="${filtered_cities}${city}"$'\n'
-                            break
-                        fi
-                    done
-                done <<< "$all_cities"
-                filtered_cities=$(echo "$filtered_cities" | sed '/^$/d')
-            fi
-
-            # If main alert has no matching cities, try pre_alert before rendering
-            if [[ -z "$filtered_cities" ]] && [[ "$alert_cat" != "13" ]] && [[ "$alert_cat" != "14" ]]; then
-                _pre_json=$(echo "$alert_data" | jq -r '.pre_alert // null' 2>/dev/null)
-                if [[ -n "$_pre_json" ]] && [[ "$_pre_json" != "null" ]]; then
-                    _pre_du=$(echo "$_pre_json" | jq -r '.display_until_unix // 0' 2>/dev/null)
-                    if [[ "$_pre_du" != "0" ]] && (( now <= _pre_du )); then
-                        # Swap to pre_alert and re-run city filter
-                        alert_cat=$(echo "$_pre_json" | jq -r '.cat // ""' 2>/dev/null)
-                        alert_first_seen=$(echo "$_pre_json" | jq -r '.first_seen_unix // 0' 2>/dev/null)
-                        alert_display_until="$_pre_du"
-                        all_cities_en=$(echo "$_pre_json" | jq -r '.cities_en[]?' 2>/dev/null)
-                        all_cities_he=$(echo "$_pre_json" | jq -r '.cities[]?' 2>/dev/null)
-                        if [[ -n "$all_cities_en" ]]; then all_cities="$all_cities_en"; else all_cities="$all_cities_he"; fi
-                        # Re-run city filter for pre_alert cities
-                        if [[ "$RED_ALERT_MODE" == "all" ]] || [[ -z "$RED_ALERT_CITIES" ]]; then
-                            filtered_cities="$all_cities"
-                        else
-                            filtered_cities=""
-                            city_en_arr=(); city_he_arr=()
-                            while IFS= read -r c; do [[ -n "$c" ]] && city_en_arr+=("$c"); done <<< "$all_cities_en"
-                            while IFS= read -r c; do [[ -n "$c" ]] && city_he_arr+=("$c"); done <<< "$all_cities_he"
-                            for i in "${!city_en_arr[@]}"; do
-                                city="${city_en_arr[$i]}"; city_he="${city_he_arr[$i]:-}"
-                                [[ -z "$city" ]] && continue
-                                for filter in "${city_filters[@]}"; do
-                                    filter=$(echo "$filter" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | tr '[:upper:]' '[:lower:]')
-                                    city_lower=$(echo "$city" | tr '[:upper:]' '[:lower:]')
-                                    if [[ "$city_lower" == *"$filter"* ]] || [[ "$city" == *"$filter"* ]]; then
-                                        filtered_cities="${filtered_cities}${city}"$'\n'; break
-                                    fi
-                                done
-                            done
-                            filtered_cities=$(echo "$filtered_cities" | sed '/^$/d')
-                        fi
-                        # Update icon/label for pre-alert
-                        case "$alert_cat" in
-                            14) alert_icon="⚠️"; alert_label="PRE-ALERT" ;;
-                        esac
-                    fi
-                fi
-            fi
-
-            # Build active alert display (red banner) — only for tier 1
-            if [[ "$alert_active" == "true" ]] && { [[ -n "$filtered_cities" ]] || [[ "$alert_cat" == "13" ]] || [[ "$alert_cat" == "14" ]]; }; then
-                city_count=$(echo "$filtered_cities" | grep -c .)
-                red_bg="\033[41;97m"
-                green_bg="\033[42;97m"
-                yellow_bg="\033[43;30m"
-
-                # Check if this is a mock/test alert
-                alert_test_prefix=""
-                alert_id_val=$(echo "$alert_data" | jq -r '.alert_id // ""' 2>/dev/null)
-                if [[ "$alert_id_val" == mock_* ]]; then
-                    alert_test_prefix="TEST "
-                fi
-
-                # All clear: green background, calm
-                if [[ "$alert_cat" == "13" ]]; then
-                    alert_segment="\n\033[32m${alert_icon} ${alert_test_prefix}All clear${reset}"
-                # Pre-alert: yellow background, warning
-                elif [[ "$alert_cat" == "14" ]]; then
-                    alert_segment="\n${yellow_bg}${alert_icon} ${alert_test_prefix}Pre-alert — be prepared${reset}"
-                elif [[ "$city_count" -le 3 ]]; then
-                    city_display=$(echo "$filtered_cities" | tr '\n' '·' | sed 's/·$//;s/·/ · /g')
-                    if [[ -n "$city_display" ]]; then
-                        alert_segment="\n${red_bg}${alert_icon} ${alert_test_prefix}${alert_label} · ${city_display}${reset}"
-                    else
-                        alert_segment="\n${red_bg}${alert_icon} ${alert_test_prefix}${alert_label}${reset}"
-                    fi
+            if [[ "$winner_state" == "active" ]]; then
+                # All clear: green text
+                if [[ "$winner_cat" == "13" ]]; then
+                    alert_segment="\n${C_GREEN}${alert_icon} ${alert_test_prefix}All clear${reset}"
+                # Pre-alert: yellow background
+                elif [[ "$winner_cat" == "14" ]]; then
+                    alert_segment="\n${C_YELLOW_BG}${alert_icon} ${alert_test_prefix}Pre-alert — be prepared${reset}"
                 else
-                    # Cycle through cities for display
-                    cycle_index=$(( (now / 2) % city_count ))
-                    cycling_city=$(echo "$filtered_cities" | sed -n "$((cycle_index + 1))p")
-                    alert_segment="\n${red_bg}${alert_icon} ${alert_test_prefix}${alert_label} · ${city_count} cities · ${cycling_city}${reset}"
+                    city_count=$(echo "$winner_filtered" | grep -c .)
+                    if [[ "$city_count" -le 3 ]]; then
+                        city_display=$(echo "$winner_filtered" | tr '\n' '·' | sed 's/·$//;s/·/ · /g')
+                        if [[ -n "$city_display" ]]; then
+                            alert_segment="\n${C_RED_BG}${alert_icon} ${alert_test_prefix}${alert_label} · ${city_display}${reset}"
+                        else
+                            alert_segment="\n${C_RED_BG}${alert_icon} ${alert_test_prefix}${alert_label}${reset}"
+                        fi
+                    else
+                        cycle_index=$(( (now / 2) % city_count ))
+                        cycling_city=$(echo "$winner_filtered" | sed -n "$((cycle_index + 1))p")
+                        alert_segment="\n${C_RED_BG}${alert_icon} ${alert_test_prefix}${alert_label} · ${city_count} cities · ${cycling_city}${reset}"
+                    fi
                 fi
+            elif [[ "$winner_state" == "recent" ]]; then
+                city_preview=$(echo "$winner_filtered" | head -2 | tr '\n' ',' | sed 's/,$//' | sed 's/,/ · /g')
+                mins_ago=$(( (now - winner_first_seen) / 60 ))
+                alert_segment="\n${C_RED}🔴 Recent: ${alert_icon} ${alert_label} · ${city_preview} · ${mins_ago}m ago${reset}"
             fi
-        fi
-
-        # Tier 2: Recent alert (subtle, past display_until but within 5 min)
-        # filtered_cities already computed above (shared with active tier)
-        if [[ "$alert_recent" == "true" ]] && [[ -z "$alert_segment" ]] && [[ -n "$filtered_cities" ]]; then
-            city_preview=$(echo "$filtered_cities" | head -2 | tr '\n' ',' | sed 's/,$//' | sed 's/,/ · /g')
-            mins_ago=$(( (now - alert_first_seen) / 60 ))
-            alert_segment="\n\033[31m🔴 Recent: ${alert_icon} ${alert_label} · ${city_preview} · ${mins_ago}m ago${reset}"
         fi
     fi
 fi
@@ -555,11 +575,11 @@ rate_segment=""
 if [[ -n "$rate_5h" ]]; then
     rate_5h_int=${rate_5h%.*}
     if (( rate_5h_int >= 80 )); then
-        rate_5h_color="\033[31m"
+        rate_5h_color="$C_RED"
     elif (( rate_5h_int >= 50 )); then
-        rate_5h_color="\033[33m"
+        rate_5h_color="$C_YELLOW"
     else
-        rate_5h_color="\033[32m"
+        rate_5h_color="$C_GREEN"
     fi
     rate_segment="⚡ ${rate_5h_color}5h: ${rate_5h_int}%%${reset}"
     if [[ -n "$rate_7d" ]]; then
@@ -579,7 +599,7 @@ if [[ -n "$RED_ALERT_CITIES" ]] || [[ -n "$RED_ALERT_MODE" ]]; then
     fi
     if [[ -f "$_pid_file" ]] && kill -0 "$(cat "$_pid_file" 2>/dev/null)" 2>/dev/null; then
         if [[ -z "$alert_segment" ]]; then
-            alert_indicator="\033[32m🟢 Alerts daemon ON${_debug_suffix}${reset}"
+            alert_indicator="${C_GREEN}🟢 Alerts daemon ON${_debug_suffix}${reset}"
         fi
     else
         # Only restart if truly zero daemons (avoids spawning duplicates)
@@ -590,7 +610,7 @@ if [[ -n "$RED_ALERT_CITIES" ]] || [[ -n "$RED_ALERT_MODE" ]]; then
         if [[ -n "$RED_ALERT_DEBUG" ]]; then
             _debug_suffix=" (${_daemon_count})"
         fi
-        alert_indicator="\033[90m🔕 Alerts daemon not running${_debug_suffix}${reset}"
+        alert_indicator="${C_GRAY}🔕 Alerts daemon not running${_debug_suffix}${reset}"
     fi
 fi
 

@@ -24,8 +24,6 @@ MOCK_SCENARIOS=(
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 SOUND_DIR="${RED_ALERT_SOUND_DIR:-$SCRIPT_DIR/static}"
 DISTRICTS_FILE="${RED_ALERT_DISTRICTS_FILE:-$HOME/.claude/districts_eng.json}"
-SOUND_PLAYED_FILE="${STATE_DIR}/red_alert_last_sound"
-
 log() {
     echo "$(date '+%Y-%m-%d %H:%M:%S') $1" >> "$LOG_FILE"
 }
@@ -124,16 +122,24 @@ build_state() {
         '{alert_id:$id,cat:$cat,title:$title,cities:$cities,cities_en:$cities_en,last_seen_unix:$last_seen,cleared_unix:$cleared,first_seen_unix:$first_seen,display_until_unix:$display_until,pre_alert:$pre_alert}'
 }
 
-# Play alert sound (only once per alert_id, non-blocking)
+# Play alert sound with per-class cooldown (non-blocking)
+# Args: $1=sound_class ("missile" or "pre_alert"), $2=sound_file, $3=alert_id
 play_sound() {
-    local sound_file="$1"
-    local current_alert_id="$2"
-    # Skip if sound disabled or played recently (cooldown configurable via RED_ALERT_SOUND_COOLDOWN)
+    local sound_class="$1"
+    local sound_file="$2"
+    local current_alert_id="$3"
     if [[ "$RED_ALERT_SOUND" == "off" ]]; then return; fi
-    local cooldown="${RED_ALERT_SOUND_COOLDOWN:-40}"
-    if [[ -f "$SOUND_PLAYED_FILE" ]]; then
+    # Per-class cooldown: missiles 40s, pre-alerts 120s
+    local cooldown
+    case "$sound_class" in
+        missile)   cooldown="${RED_ALERT_SOUND_COOLDOWN_MISSILE:-40}" ;;
+        pre_alert) cooldown="${RED_ALERT_SOUND_COOLDOWN_PRE:-120}" ;;
+        *)         cooldown="${RED_ALERT_SOUND_COOLDOWN:-40}" ;;
+    esac
+    local cooldown_file="${STATE_DIR}/red_alert_last_sound_${sound_class}"
+    if [[ -f "$cooldown_file" ]]; then
         local last_time
-        last_time=$(cat "$SOUND_PLAYED_FILE" 2>/dev/null)
+        last_time=$(cat "$cooldown_file" 2>/dev/null)
         local now_secs
         now_secs=$(date +%s)
         if [[ -n "$last_time" ]] && (( now_secs - last_time < cooldown )); then return; fi
@@ -142,7 +148,7 @@ play_sound() {
         log "Sound file not found: $sound_file"
         return
     fi
-    date +%s > "$SOUND_PLAYED_FILE"
+    date +%s > "$cooldown_file"
     # macOS: afplay, Linux: paplay or aplay
     if command -v afplay &>/dev/null; then
         afplay "$sound_file" &
@@ -151,7 +157,7 @@ play_sound() {
     elif command -v aplay &>/dev/null; then
         aplay "$sound_file" &
     fi
-    log "Sound played: $(basename "$sound_file") for alert $current_alert_id"
+    log "Sound played: $(basename "$sound_file") [$sound_class] for alert $current_alert_id"
 }
 
 # Translate Hebrew city names to English using districts file
@@ -178,6 +184,7 @@ translate_cities() {
 }
 
 # Check if any alert cities match the user's filter (for sound decisions)
+# SYNC: keep city mapping in sync with claude-pulse:filter_alert_cities()
 # Returns 0 (true) if match found or mode=all, 1 (false) otherwise
 cities_match_filter() {
     local cities_he="$1"
@@ -346,8 +353,8 @@ while true; do
             # Play sound only if cities match user's filter
             if cities_match_filter "$cities" "$cities_en"; then
                 case "$cat_val" in
-                    14) play_sound "$SOUND_DIR/early.m4a" "$alert_id" ;;
-                    1|2|6) play_sound "$SOUND_DIR/go.m4a" "$alert_id" ;;
+                    14) play_sound "pre_alert" "$SOUND_DIR/early.m4a" "$alert_id" ;;
+                    1|2|6) play_sound "missile" "$SOUND_DIR/go.m4a" "$alert_id" ;;
                 esac
             fi
         fi
@@ -401,7 +408,7 @@ while true; do
             cities_en=$(translate_cities "$cities")
             write_state "$(build_state "$alert_id" "14" "$title" "$cities" "$cities_en" "$now" 0)"
             if cities_match_filter "$cities" "$cities_en"; then
-                play_sound "$SOUND_DIR/early.m4a" "$alert_id"
+                play_sound "pre_alert" "$SOUND_DIR/early.m4a" "$alert_id"
             fi
             ;;
         10)
@@ -417,7 +424,7 @@ while true; do
                 cities_en=$(translate_cities "$cities")
                 write_state "$(build_state "$alert_id" "14" "$title" "$cities" "$cities_en" "$now" 0)"
                 if cities_match_filter "$cities" "$cities_en"; then
-                    play_sound "$SOUND_DIR/early.m4a" "$alert_id"
+                    play_sound "pre_alert" "$SOUND_DIR/early.m4a" "$alert_id"
                 fi
             fi
             ;;
@@ -428,7 +435,7 @@ while true; do
             write_state "$(build_state "$alert_id" "$cat_val" "$title" "$cities" "$cities_en" "$now" 0)"
             if cities_match_filter "$cities" "$cities_en"; then
                 case "$cat_val" in
-                    1|2|6) play_sound "$SOUND_DIR/go.m4a" "$alert_id" ;;
+                    1|2|6) play_sound "missile" "$SOUND_DIR/go.m4a" "$alert_id" ;;
                 esac
             fi
             ;;

@@ -1,5 +1,36 @@
 # Release Notes
 
+## v2.4.0 - Alert Logic Refactor
+
+**Released:** March 26, 2026
+
+### What's Changed
+
+- **Extracted city filter into reusable function** -- single source of truth for 30-city English/Hebrew mapping, called for both main alert and pre_alert independently. Fixes #16 (pre-alert not displayed when main alert filtered out).
+- **Extracted alert evaluation function** -- determines active/recent/expired state for any alert. Eliminates fragile variable-swapping pattern.
+- **Explicit winner matrix** -- priority selection is now a clear 6-step matrix instead of nested conditionals: main active > pre active > global category > main recent > daemon status.
+- **Per-sound-class cooldown** -- missiles (go.m4a) have 40s cooldown, pre-alerts (early.m4a) have 120s cooldown, tracked independently. Fixes #13 (pre-alerts playing 3x in 45s).
+- **Consolidated jq calls** -- 18 jq calls in alert section reduced to 4, 6 initial input calls reduced to 1. Uses Unit Separator delimiter instead of eval.
+- **ANSI color variables** -- all escape codes defined once at top of file, replacing inline magic strings.
+- **Test coverage** -- 79 tests across 5 suites (up from 59 across 3).
+
+### Closed Issues
+
+- #13: Per-category sound cooldown (per-sound-class cooldown)
+- #14: Display lag (closed as known CC limitation, sound works correctly)
+- #16: Pre-alert fallback when main alert filtered out (structurally eliminated)
+
+### Upgrade
+
+```bash
+cd claude-pulse
+git pull
+cp claude-pulse ~/.claude/statusline-command.sh
+cp red-alert-daemon.sh ~/.claude/red-alert-daemon.sh
+```
+
+---
+
 ## v2.3.2 - Sound Cooldown Fix
 
 **Released:** March 26, 2026
@@ -202,7 +233,7 @@ git pull
 - **Real-time alerts**: Pikud HaOref rocket alert notifications in the statusline
 - **City & zone filtering**: Monitor specific cities or zones with fuzzy matching (English or Hebrew)
 - **English city names**: 1492 locations translated via official oref.org.il districts
-- **Alert sounds**: macOS m4a playback with configurable cooldown (20s default)
+- **Alert sounds**: macOS m4a playback with per-class cooldown (40s missiles, 120s pre-alerts)
 - **launchd integration**: Daemon managed by macOS LaunchAgent, single instance guaranteed
 - **Heartbeat lifecycle**: Daemon self-terminates 30s after all Claude Code instances close
 - **Interactive setup**: `/setup-red-alert` command with city/zone selection

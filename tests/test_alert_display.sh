@@ -133,5 +133,32 @@ setup_mock_state "1" '["תל אביב"]'
 output=$(run_pulse)
 assert_contains "$output" "[41;97m" "alert has red background ANSI"
 
+# test_priority_active_main_beats_pre: active missile with city match beats active pre-alert
+export RED_ALERT_CITIES="Tel Aviv"
+unset RED_ALERT_MODE
+now=$(date +%s)
+cat > "$RED_ALERT_STATE_FILE" <<EOF
+{"alert_id":"m1","cat":"1","title":"missiles","cities":["תל אביב"],"cities_en":["Tel Aviv"],"last_seen_unix":$now,"cleared_unix":0,"first_seen_unix":$now,"display_until_unix":$((now+120)),"pre_alert":{"alert_id":"p1","cat":"14","title":"pre","cities":["תל אביב"],"cities_en":["Tel Aviv"],"last_seen_unix":$now,"first_seen_unix":$now,"display_until_unix":$((now+120))}}
+EOF
+output=$(run_pulse)
+assert_contains "$output" "MISSILES" "priority matrix: active missile beats active pre-alert"
+assert_not_contains "$output" "Pre-alert" "priority matrix: pre-alert hidden by active missile"
+
+# test_priority_pre_beats_no_match_main: active pre-alert shown when main has no city match
+export RED_ALERT_CITIES="Tel Aviv"
+unset RED_ALERT_MODE
+cat > "$RED_ALERT_STATE_FILE" <<EOF
+{"alert_id":"m2","cat":"1","title":"missiles","cities":["מטולה"],"cities_en":["Metula"],"last_seen_unix":$now,"cleared_unix":0,"first_seen_unix":$now,"display_until_unix":$((now+120)),"pre_alert":{"alert_id":"p2","cat":"14","title":"pre","cities":["תל אביב"],"cities_en":["Tel Aviv"],"last_seen_unix":$now,"first_seen_unix":$now,"display_until_unix":$((now+120))}}
+EOF
+output=$(run_pulse)
+assert_contains "$output" "Pre-alert" "priority matrix: pre-alert shown when main no city match"
+
+# test_global_cat13: all-clear shows without city filter
+export RED_ALERT_CITIES="Tel Aviv"
+unset RED_ALERT_MODE
+setup_mock_state "13" '[]' "הקלה"
+output=$(run_pulse)
+assert_contains "$output" "All clear" "global cat: all-clear shows without city filter"
+
 cleanup
 report

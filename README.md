@@ -1,14 +1,21 @@
 # claude-pulse
 
-> Real-time token usage monitoring for Claude Code status line | **v2.3.2**
+> Real-time token usage monitoring for Claude Code status line | **v2.4.0**
 
 **claude-pulse** displays your current Claude Code token usage directly in your status line, helping you stay aware of context consumption without running `/context` manually.
 
-## New in v2.3.2: Sound Cooldown Fix
+## New in v2.4.0: Alert Logic Refactor
 
-- **Sound cooldown increased to 40s** - Pre-alerts were playing sound 3 times in 45 seconds. Temporary fix while a per-category cooldown solution is designed (#13).
+- **Per-sound-class cooldown** - Missiles: 40s, pre-alerts: 120s, tracked independently. No more triple pre-alert sounds (#13).
+- **Pre-alert fallback fix** - Pre-alerts now display correctly when main alert is filtered out by city (#16).
+- **Consolidated jq calls** - Alert section: 18 jq calls reduced to 4. Input parsing: 6 reduced to 1.
+- **79 tests** across 5 suites (city filter, daemon sound, alert display, daemon lifecycle, statusline).
 
 ## Previous Updates
+
+### v2.3.2: Sound Cooldown Fix
+
+- Sound cooldown increased to 40s as temporary fix for pre-alert repetition.
 
 ### v2.3.1: Two-Tier Alert Display + Cat 10 Pre-Alert
 
@@ -67,11 +74,11 @@ Real-time Pikud HaOref (Israel Home Front Command) rocket alert notifications in
 - **Real-time alerts** - Missiles, hostile aircraft, earthquakes, infiltration, drills, and more
 - **City & zone filtering** - Monitor specific cities or zones with fuzzy matching (English or Hebrew)
 - **English city names** - 1492 locations translated via official oref.org.il districts
-- **Alert sounds** - macOS m4a playback with configurable cooldown (20s default)
+- **Alert sounds** - macOS m4a playback with per-class cooldown (40s missiles, 120s pre-alerts)
 - **launchd integration** - Daemon managed by macOS LaunchAgent, single instance guaranteed
 - **Heartbeat lifecycle** - Daemon self-terminates 30s after all Claude Code instances close
 - **Interactive setup** - `/setup-red-alert` command with city/zone selection
-- **Test suite** - 51 tests across 3 suites
+- **Test suite** - 79 tests across 5 suites
 
 ### v1.7.1: Context Window Label
 
