@@ -360,19 +360,10 @@ while true; do
         10)
             # Cat 10 has multiple meanings based on title
             if [[ "$title" == *"הסתיים"* ]]; then
-                # Event ended — stop red banner but keep data for "Recent" tier
-                # Set display_until to now (banner stops) but preserve first_seen for 5-min tail
+                # Event ended — log only, let display_until expire naturally
+                # The red banner stops on its own via display_until_unix,
+                # then "Recent" tier shows for up to 5 min from first_seen
                 log "EVENT ENDED cat=$cat_val title=$title id=$alert_id cities=$cities"
-                if [[ -f "$STATE_FILE" ]]; then
-                    # Only expire if stored alert is older (don't kill a newer alert's banner)
-                    prev_last_seen=$(jq -r '.last_seen_unix // 0' "$STATE_FILE" 2>/dev/null)
-                    if (( prev_last_seen <= now )); then
-                        prev_state=$(cat "$STATE_FILE" 2>/dev/null)
-                        if [[ -n "$prev_state" ]]; then
-                            echo "$prev_state" | jq --argjson now "$now" '.display_until_unix = $now | .cleared_unix = $now' > "${STATE_FILE}.$$" && mv -f "${STATE_FILE}.$$" "$STATE_FILE"
-                        fi
-                    fi
-                fi
             else
                 # Pre-alert or other warning (e.g., "בדקות הקרובות צפויות להתקבל התרעות")
                 log "PRE-ALERT cat=$cat_val title=$title id=$alert_id cities=$cities"
