@@ -1,10 +1,19 @@
 # claude-pulse
 
-> Real-time token usage monitoring for Claude Code status line | **v2.4.2**
+> Real-time token usage monitoring for Claude Code status line | **v2.5.0**
 
 **claude-pulse** displays your current Claude Code token usage directly in your status line, helping you stay aware of context consumption without running `/context` manually.
 
-## New in v2.4.2: Alert City Merging + Logic Refactor
+## New in v2.5.0: Native Conversation Names
+
+- **Native `session_name` support** - Claude Code now exposes the conversation name directly in the statusline JSON. No more AI API calls, transcript parsing, or caching needed for conversation names.
+- **Zero-latency names** - Names from `/rename` or Claude Code's auto-generated slugs appear instantly.
+- **Backwards compatible** - Falls back to the existing AI-generated approach (Anthropic/OpenAI/Gemini) for older Claude Code versions without `session_name`.
+- **106 tests** across 6 suites — added tests for conversation name display, truncation, rate limits, and progress bar.
+
+## Previous Updates
+
+### v2.4.2: Alert City Merging + Logic Refactor
 
 - **Alert city merging** - Multiple alert waves for different areas now accumulate cities instead of overwriting. A missile alert for Tel Aviv stays visible even when a new wave hits Sharon area (#18).
 - **Per-sound-class cooldown** - Missiles: 40s, pre-alerts: 120s, tracked independently. No more triple pre-alert sounds (#13).
@@ -12,8 +21,6 @@
 - **Extracted filter functions** - City filter and alert evaluation extracted into reusable functions with explicit winner matrix.
 - **Consolidated jq calls** - Alert section: 18 jq calls reduced to 4. Input parsing: 6 reduced to 1.
 - **93 tests** across 6 suites (alert merge, city filter, daemon sound, alert display, daemon lifecycle, statusline).
-
-## Previous Updates
 
 ### v2.3.2: Sound Cooldown Fix
 
@@ -31,8 +38,6 @@
 Tier 1 (active):  🚀 MISSILES · Ramla · Tel Aviv          (red background, up to 180s)
 Tier 2 (recent):  🔴 Recent: 🚀 MISSILES · Ramla · 2m ago (red text, up to 5 min)
 ```
-
-## Previous Updates
 
 ### v2.2.2: Fix Daemon Dying During Idle Sessions
 
@@ -274,11 +279,10 @@ The script tries APIs in this order: Anthropic → OpenAI → Gemini → Fallbac
 
 ### How Conversation Names Work
 
-1. **Named sessions** — If you've used `/rename`, the saved summary is sent to the AI for a 2-3 word name
-2. **Active sessions** — For sessions without a name yet, the first few assistant messages from the transcript are used to infer a topic
-3. **Caching** — Generated names are cached in `~/.cache/claude-pulse/` to avoid repeated API calls
+1. **Native (v2.5.0+)** — Claude Code exposes `session_name` directly in the statusline JSON. This includes `/rename` values and auto-generated names. No API key needed.
+2. **Fallback (older Claude Code)** — If `session_name` is absent, uses AI API to generate a 2-3 word name from session summary or transcript content. Cached in `~/.cache/claude-pulse/`.
 
-After adding your API key, restart your terminal or run `source ~/.zshrc` to apply.
+After adding your API key (for fallback), restart your terminal or run `source ~/.zshrc` to apply.
 
 ### Red Alert (Pikud HaOref)
 
