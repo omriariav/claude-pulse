@@ -336,11 +336,20 @@ Supports English city names, Hebrew names, zone-specific names (e.g., `Tel Aviv 
 | `RED_ALERT_CITIES` | comma-separated | Filter alerts to specific cities/zones |
 | `RED_ALERT_MODE` | `all` / `mock` | `all` = every alert. `mock` = offline test data |
 | `RED_ALERT_SOUND` | `off` | Disable alert sounds |
-| `RED_ALERT_SOUND_COOLDOWN` | seconds | Min time between sounds (default 20) |
+| `RED_ALERT_SOUND_COOLDOWN_MISSILE` | seconds | Min time between missile sounds (default 40) |
+| `RED_ALERT_SOUND_COOLDOWN_PRE` | seconds | Min time between pre-alert sounds (default 120) |
 
 #### Architecture
 
 The daemon runs as a macOS LaunchAgent, managed by launchd. It auto-starts when Claude Code opens (via SessionStart hook) and self-terminates ~30s after all Claude Code instances close (heartbeat mechanism). State is stored in `~/.local/state/claude-pulse/`.
+
+The recommended SessionStart hook command (in `~/.claude/settings.json`):
+
+```bash
+launchctl list | grep -q com.claude-pulse.red-alert || launchctl load ~/Library/LaunchAgents/com.claude-pulse.red-alert.plist; launchctl kickstart -k "gui/$(id -u)/com.claude-pulse.red-alert" >/dev/null 2>&1; true
+```
+
+This checks if the service is already loaded before trying to load it, avoiding errors when the daemon is already running via `RunAtLoad`.
 
 ### Model Detection
 
