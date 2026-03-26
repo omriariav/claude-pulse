@@ -83,7 +83,7 @@ play_sound() {
     local current_alert_id="$2"
     # Skip if sound disabled or played recently (cooldown configurable via RED_ALERT_SOUND_COOLDOWN)
     if [[ "$RED_ALERT_SOUND" == "off" ]]; then return; fi
-    local cooldown="${RED_ALERT_SOUND_COOLDOWN:-20}"
+    local cooldown="${RED_ALERT_SOUND_COOLDOWN:-40}"
     if [[ -f "$SOUND_PLAYED_FILE" ]]; then
         local last_time
         last_time=$(cat "$SOUND_PLAYED_FILE" 2>/dev/null)
