@@ -343,8 +343,9 @@ if [[ -n "$RED_ALERT_CITIES" ]] || [[ -n "$RED_ALERT_MODE" ]]; then
             fi
         fi
 
-        # If main alert expired, fall back to pre_alert if active
-        if [[ "$alert_active" == "false" ]] && [[ "$alert_recent" == "false" ]]; then
+        # If main alert not actively showing (expired or only recent), check pre_alert
+        # Priority: missile active > pre-alert active > missile recent > daemon status
+        if [[ "$alert_active" == "false" ]]; then
             _pre_alert=$(echo "$alert_data" | jq -r '.pre_alert // null' 2>/dev/null)
             if [[ -n "$_pre_alert" ]] && [[ "$_pre_alert" != "null" ]]; then
                 _pre_cat=$(echo "$_pre_alert" | jq -r '.cat // ""' 2>/dev/null)
