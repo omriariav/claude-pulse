@@ -68,6 +68,31 @@ build_state() {
         local opt2=$(( first_seen + 180 ))
         display_until=$(( opt1 > opt2 ? opt1 : opt2 ))
     fi
+    # Merge cities with existing main alert if same category and TTL still active
+    # Different alert waves for different areas should accumulate, not replace
+    if [[ -f "$STATE_FILE" ]] && [[ "$cleared" == "0" ]] && [[ -n "$cat" ]]; then
+        local prev_cat prev_du
+        prev_cat=$(jq -r '.cat // ""' "$STATE_FILE" 2>/dev/null)
+        prev_du=$(jq -r '.display_until_unix // 0' "$STATE_FILE" 2>/dev/null)
+        local now_merge
+        now_merge=$(date +%s)
+        if [[ "$prev_cat" == "$cat" ]] && [[ "$prev_id" != "$id" ]] && [[ "$prev_du" != "0" ]] && (( prev_du > now_merge )); then
+            cities=$(jq -s '.[0] + .[1] | unique' <(echo "$cities") <(jq '.cities // []' "$STATE_FILE") 2>/dev/null)
+            cities_en=$(jq -s '.[0] + .[1] | unique' <(echo "$cities_en") <(jq '.cities_en // []' "$STATE_FILE") 2>/dev/null)
+            # Keep earlier first_seen for longer display window
+            if [[ "$prev_first" != "0" ]] && [[ "$prev_first" != "null" ]] && (( prev_first < first_seen )); then
+                first_seen="$prev_first"
+            fi
+            # Recalculate display_until with merged first_seen
+            opt2=$(( first_seen + 180 ))
+            display_until=$(( opt1 > opt2 ? opt1 : opt2 ))
+            # Keep later display_until
+            if (( prev_du > display_until )); then
+                display_until="$prev_du"
+            fi
+            log "ALERT MERGE: combined ${id} with existing ${prev_id} (cat=${cat})"
+        fi
+    fi
     # Handle pre_alert coexistence:
     # - Missile/UAV (1/2/6) overwriting pre-alert → save pre-alert in pre_alert field
     # - Pre-alert arriving while missile is active → store in pre_alert, keep missile as main
