@@ -42,9 +42,10 @@ The project consists of:
 
 ### Conversation name feature
 
-- **Two sources**: (1) session summary from `sessions-index.json` (set by `/rename` or conversation end), (2) first 3 assistant messages from the transcript JSONL (for active sessions)
-- **AI API providers**: Tries Anthropic → OpenAI → Gemini in order; falls back to first 3 words if no API available
-- **Caching**: Names cached in `~/.cache/claude-pulse/{session_id}.name` with MD5 hash of source text for invalidation
+- **Primary: native `session_name`**: Claude Code exposes `session_name` in the statusline JSON input (set by `/rename` or auto-generated). Used directly when present — zero API calls, no caching needed.
+- **Fallback (older Claude Code)**: When `session_name` is absent, falls back to: (1) session summary from `sessions-index.json`, (2) first 3 assistant messages from the transcript JSONL
+- **AI API providers** (fallback only): Tries Anthropic → OpenAI → Gemini in order; falls back to first 3 words if no API available
+- **Caching** (fallback only): Names cached in `~/.cache/claude-pulse/{session_id}.name` with MD5 hash of source text for invalidation
 - **Key learning**: `sessions-index.json` only gets populated after a session ends or user runs `/rename` — for active sessions, the transcript fallback is essential
 - **Transcript structure**: User-typed prompts are NOT stored as plain text in `type: "user"` entries (those are mostly tool results). The `type: "assistant"` entries with `content[].type == "text"` contain the best topic signals
 - API call logic is extracted into reusable functions (`generate_name_via_api` in bash, `Get-ConversationName` in PowerShell) to avoid duplication

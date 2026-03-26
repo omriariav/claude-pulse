@@ -160,7 +160,12 @@ function Get-ConversationName {
 
 # Conversation name lookup
 $conv_name = ""
-if ($data.transcript_path -and $data.session_id) {
+
+# Primary: session_name from Claude Code (native field, available after /rename or auto-generated)
+if ($data.session_name) {
+    $conv_name = $data.session_name
+# Fallback: AI-generated name from transcript/sessions-index (for older Claude Code versions)
+} elseif ($data.transcript_path -and $data.session_id) {
     $project_dir = Split-Path $data.transcript_path -Parent
     $sessions_index = Join-Path $project_dir "sessions-index.json"
     $cache_file = Join-Path $cache_dir "$($data.session_id).name"
