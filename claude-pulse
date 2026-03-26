@@ -1,5 +1,5 @@
 #!/bin/bash
-# claude-pulse v2.4.2: Real-time token usage for Claude Code status line
+# claude-pulse v2.5.0: Real-time token usage for Claude Code status line
 # Uses billing API (transcript) for accurate FULL context usage
 # Falls back to native context_window when transcript unavailable
 # Displays current model name and AI-generated conversation names
@@ -19,14 +19,15 @@ C_GREEN_BG="\033[42;97m"
 C_YELLOW_BG="\033[43;30m"
 
 # Extract values from JSON (single jq call, Unit Separator delimiter)
-IFS=$'\x1f' read -r cwd transcript_path session_id model_id rate_5h rate_7d < <(
+IFS=$'\x1f' read -r cwd transcript_path session_id model_id rate_5h rate_7d session_name < <(
     echo "$input" | jq -j '[
         .cwd // "",
         .transcript_path // "",
         .session_id // "",
         .model.id // "claude-sonnet-4-5-20250929",
         (.rate_limits.five_hour.used_percentage // "" | tostring),
-        (.rate_limits.seven_day.used_percentage // "" | tostring)
+        (.rate_limits.seven_day.used_percentage // "" | tostring),
+        .session_name // ""
     ] | join("\u001f")' 2>/dev/null
 )
 
@@ -211,7 +212,12 @@ generate_name_via_api() {
 
 # Conversation name lookup
 conv_name=""
-if [[ -n "$transcript_path" ]] && [[ "$transcript_path" != "null" ]] && [[ -n "$session_id" ]] && [[ "$session_id" != "null" ]]; then
+
+# Primary: session_name from Claude Code (native field, available after /rename or auto-generated)
+if [[ -n "$session_name" ]] && [[ "$session_name" != "null" ]]; then
+    conv_name="$session_name"
+# Fallback: AI-generated name from transcript/sessions-index (for older Claude Code versions)
+elif [[ -n "$transcript_path" ]] && [[ "$transcript_path" != "null" ]] && [[ -n "$session_id" ]] && [[ "$session_id" != "null" ]]; then
     project_dir=$(dirname "$transcript_path")
     sessions_index="${project_dir}/sessions-index.json"
     cache_file="${cache_dir}/${session_id}.name"
