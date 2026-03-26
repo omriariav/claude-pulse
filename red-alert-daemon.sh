@@ -360,8 +360,9 @@ while true; do
         10)
             # Cat 10 has multiple meanings based on title
             if [[ "$title" == *"הסתיים"* ]]; then
-                # Event ended (האירוע הסתיים) — log only, don't display or sound
+                # Event ended (האירוע הסתיים) — clear state so red banner stops
                 log "EVENT ENDED cat=$cat_val title=$title id=$alert_id cities=$cities"
+                write_state "$(build_state "" "" "" "[]" "[]" 0 "$now")"
             else
                 # Pre-alert or other warning (e.g., "בדקות הקרובות צפויות להתקבל התרעות")
                 log "PRE-ALERT cat=$cat_val title=$title id=$alert_id cities=$cities"
