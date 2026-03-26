@@ -491,14 +491,40 @@ if [[ -n "$RED_ALERT_CITIES" ]] || [[ -n "$RED_ALERT_MODE" ]]; then
                 14)  alert_icon="⚠️";  alert_label="PRE-ALERT" ;;
                 *)   alert_icon="⚠️";  alert_label="ALERT" ;;
             esac
-            all_cities_en=$(echo "$alert_data" | jq -r '.cities_en[]?' 2>/dev/null)
-            if [[ -n "$all_cities_en" ]]; then
-                city_preview=$(echo "$all_cities_en" | head -2 | tr '\n' ',' | sed 's/,$//' | sed 's/,/ · /g')
-            else
-                city_preview=$(echo "$alert_data" | jq -r '.cities[]?' 2>/dev/null | head -2 | tr '\n' ',' | sed 's/,$//' | sed 's/,/ · /g')
+            # Use filtered_cities if already computed (active tier ran), otherwise compute
+            if [[ -z "$filtered_cities" ]]; then
+                # Need to run the same filter as active tier
+                all_cities_en=$(echo "$alert_data" | jq -r '.cities_en[]?' 2>/dev/null)
+                all_cities_he=$(echo "$alert_data" | jq -r '.cities[]?' 2>/dev/null)
+                if [[ -n "$all_cities_en" ]]; then
+                    all_cities="$all_cities_en"
+                else
+                    all_cities="$all_cities_he"
+                fi
+                if [[ "$RED_ALERT_MODE" == "all" ]] || [[ -z "$RED_ALERT_CITIES" ]]; then
+                    filtered_cities="$all_cities"
+                else
+                    filtered_cities=""
+                    IFS=',' read -ra city_filters <<< "$RED_ALERT_CITIES"
+                    while IFS= read -r city; do
+                        [[ -z "$city" ]] && continue
+                        city_lower=$(echo "$city" | tr '[:upper:]' '[:lower:]')
+                        for filter in "${city_filters[@]}"; do
+                            filter=$(echo "$filter" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | tr '[:upper:]' '[:lower:]')
+                            if [[ "$city_lower" == *"$filter"* ]]; then
+                                filtered_cities="${filtered_cities}${city}"$'\n'
+                                break
+                            fi
+                        done
+                    done <<< "$all_cities"
+                    filtered_cities=$(echo "$filtered_cities" | sed '/^$/d')
+                fi
             fi
-            mins_ago=$(( (now - alert_first_seen) / 60 ))
-            alert_segment="\n\033[31m🔴 Recent: ${alert_icon} ${alert_label} · ${city_preview} · ${mins_ago}m ago${reset}"
+            if [[ -n "$filtered_cities" ]]; then
+                city_preview=$(echo "$filtered_cities" | head -2 | tr '\n' ',' | sed 's/,$//' | sed 's/,/ · /g')
+                mins_ago=$(( (now - alert_first_seen) / 60 ))
+                alert_segment="\n\033[31m🔴 Recent: ${alert_icon} ${alert_label} · ${city_preview} · ${mins_ago}m ago${reset}"
+            fi
         fi
     fi
 fi
