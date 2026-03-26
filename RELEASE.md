@@ -1,5 +1,25 @@
 # Release Notes
 
+## v2.3.2 - Sound Cooldown Fix
+
+**Released:** March 26, 2026
+
+### What's Changed
+
+- Sound cooldown increased from 20s to 40s, reducing pre-alert sound repetition
+- During a real pre-alert wave, `early.m4a` was playing 3 times in 45 seconds due to API sending new alert IDs
+- Issue #13 remains open for a proper per-category cooldown solution
+
+### Upgrade
+
+```bash
+cd claude-pulse
+git pull
+cp red-alert-daemon.sh ~/.claude/red-alert-daemon.sh
+```
+
+---
+
 ## v2.3.0 - Two-Tier Alert Display + Cat 10 Pre-Alert
 
 **Released:** March 26, 2026
