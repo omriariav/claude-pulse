@@ -364,10 +364,13 @@ while true; do
                 # Set display_until to now (banner stops) but preserve first_seen for 5-min tail
                 log "EVENT ENDED cat=$cat_val title=$title id=$alert_id cities=$cities"
                 if [[ -f "$STATE_FILE" ]]; then
-                    # Expire the display_until on existing state
-                    prev_state=$(cat "$STATE_FILE" 2>/dev/null)
-                    if [[ -n "$prev_state" ]]; then
-                        echo "$prev_state" | jq --argjson now "$now" '.display_until_unix = $now | .cleared_unix = $now' > "${STATE_FILE}.$$" && mv -f "${STATE_FILE}.$$" "$STATE_FILE"
+                    # Only expire if stored alert is older (don't kill a newer alert's banner)
+                    prev_last_seen=$(jq -r '.last_seen_unix // 0' "$STATE_FILE" 2>/dev/null)
+                    if (( prev_last_seen <= now )); then
+                        prev_state=$(cat "$STATE_FILE" 2>/dev/null)
+                        if [[ -n "$prev_state" ]]; then
+                            echo "$prev_state" | jq --argjson now "$now" '.display_until_unix = $now | .cleared_unix = $now' > "${STATE_FILE}.$$" && mv -f "${STATE_FILE}.$$" "$STATE_FILE"
+                        fi
                     fi
                 fi
             else
