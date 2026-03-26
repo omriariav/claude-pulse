@@ -92,14 +92,58 @@ build_state() {
             local p_opt1=$(( last_seen + 60 ))
             local p_opt2=$(( pre_first_seen + 180 ))
             pre_display_until=$(( p_opt1 > p_opt2 ? p_opt1 : p_opt2 ))
+            # Merge with existing pre_alert if its TTL is still active (different areas accumulate)
+            local merged_cities="$cities"
+            local merged_cities_en="$cities_en"
+            local existing_pre_du
+            existing_pre_du=$(jq -r '.pre_alert.display_until_unix // 0' "$STATE_FILE" 2>/dev/null)
+            local now_merge
+            now_merge=$(date +%s)
+            if [[ "$existing_pre_du" != "0" ]] && (( existing_pre_du > now_merge )) && [[ "$existing_pre_id" != "$id" ]]; then
+                # Existing pre_alert still active and different ID — merge cities (union)
+                merged_cities=$(jq -s '.[0] + .[1] | unique' <(echo "$cities") <(jq '.pre_alert.cities // []' "$STATE_FILE") 2>/dev/null)
+                merged_cities_en=$(jq -s '.[0] + .[1] | unique' <(echo "$cities_en") <(jq '.pre_alert.cities_en // []' "$STATE_FILE") 2>/dev/null)
+                # Keep earlier first_seen for longer display
+                local existing_pre_fs
+                existing_pre_fs=$(jq -r '.pre_alert.first_seen_unix // 0' "$STATE_FILE" 2>/dev/null)
+                if [[ "$existing_pre_fs" != "0" ]] && (( existing_pre_fs < pre_first_seen )); then
+                    pre_first_seen="$existing_pre_fs"
+                    p_opt2=$(( pre_first_seen + 180 ))
+                    pre_display_until=$(( p_opt1 > p_opt2 ? p_opt1 : p_opt2 ))
+                fi
+                # Keep later display_until
+                if (( existing_pre_du > pre_display_until )); then
+                    pre_display_until="$existing_pre_du"
+                fi
+                log "PRE-ALERT MERGE: combined ${id} with existing ${existing_pre_id}"
+            fi
             local pre_obj
             pre_obj=$(jq -n --arg id "$id" --arg cat "$cat" --arg title "$title" \
-                --argjson cities "$cities" --argjson cities_en "$cities_en" \
+                --argjson cities "$merged_cities" --argjson cities_en "$merged_cities_en" \
                 --argjson last_seen "$last_seen" --argjson first_seen "$pre_first_seen" \
                 --argjson display_until "$pre_display_until" \
                 '{alert_id:$id,cat:$cat,title:$title,cities:$cities,cities_en:$cities_en,last_seen_unix:$last_seen,first_seen_unix:$first_seen,display_until_unix:$display_until}')
             jq --argjson pa "$pre_obj" '.pre_alert = $pa' "$STATE_FILE"
             return
+        elif [[ "$prev_cat" == "14" ]] && [[ "$cat" == "14" ]] && [[ "$prev_id" != "$id" ]]; then
+            # New pre-alert replacing existing pre-alert with different ID → merge cities if TTL active
+            local prev_du
+            prev_du=$(jq -r '.display_until_unix // 0' "$STATE_FILE" 2>/dev/null)
+            local now_merge
+            now_merge=$(date +%s)
+            if [[ "$prev_du" != "0" ]] && (( prev_du > now_merge )); then
+                cities=$(jq -s '.[0] + .[1] | unique' <(echo "$cities") <(jq '.cities // []' "$STATE_FILE") 2>/dev/null)
+                cities_en=$(jq -s '.[0] + .[1] | unique' <(echo "$cities_en") <(jq '.cities_en // []' "$STATE_FILE") 2>/dev/null)
+                # Keep earlier first_seen
+                if [[ "$prev_first" != "0" ]] && (( prev_first < first_seen )); then
+                    first_seen="$prev_first"
+                fi
+                # Keep later display_until
+                if (( prev_du > display_until )); then
+                    display_until="$prev_du"
+                fi
+                log "PRE-ALERT MERGE (main): combined ${id} with existing ${prev_id}"
+            fi
         elif [[ "$prev_cat" == "14" ]] && [[ "$cat" =~ ^(1|2|6)$ ]]; then
             # Missile/UAV overwriting pre-alert → preserve pre-alert
             pre_alert=$(jq -c '{alert_id,cat,title,cities,cities_en,last_seen_unix,first_seen_unix,display_until_unix}' "$STATE_FILE" 2>/dev/null)

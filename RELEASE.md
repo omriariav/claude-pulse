@@ -1,5 +1,25 @@
 # Release Notes
 
+## v2.4.1 - Pre-Alert City Merge
+
+**Released:** March 26, 2026
+
+### What's Fixed
+
+Pre-alerts for different areas no longer overwrite each other. When a new pre-alert arrives while an existing one's TTL is still active, cities from both are merged (union). This prevents losing visual alerts for your area when the API sends a new pre-alert wave for a different region.
+
+**Example:** Pre-alert for Ramla at 17:02, then pre-alert for Sharon area at 17:05. Previously, Ramla disappeared. Now both areas' cities are combined until the TTL expires.
+
+### Upgrade
+
+```bash
+cd claude-pulse
+git pull
+cp red-alert-daemon.sh ~/.claude/red-alert-daemon.sh
+```
+
+---
+
 ## v2.4.0 - Alert Logic Refactor
 
 **Released:** March 26, 2026
