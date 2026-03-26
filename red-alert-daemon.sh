@@ -360,9 +360,10 @@ while true; do
         10)
             # Cat 10 has multiple meanings based on title
             if [[ "$title" == *"הסתיים"* ]]; then
-                # Event ended (האירוע הסתיים) — clear state so red banner stops
+                # Event ended — log only, let display_until expire naturally
+                # The red banner stops on its own via display_until_unix,
+                # then "Recent" tier shows for up to 5 min from first_seen
                 log "EVENT ENDED cat=$cat_val title=$title id=$alert_id cities=$cities"
-                write_state "$(build_state "" "" "" "[]" "[]" 0 "$now")"
             else
                 # Pre-alert or other warning (e.g., "בדקות הקרובות צפויות להתקבל התרעות")
                 log "PRE-ALERT cat=$cat_val title=$title id=$alert_id cities=$cities"

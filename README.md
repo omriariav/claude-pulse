@@ -1,15 +1,16 @@
 # claude-pulse
 
-> Real-time token usage monitoring for Claude Code status line | **v2.3.0**
+> Real-time token usage monitoring for Claude Code status line | **v2.3.1**
 
 **claude-pulse** displays your current Claude Code token usage directly in your status line, helping you stay aware of context consumption without running `/context` manually.
 
-## New in v2.3.0: Two-Tier Alert Display + Cat 10 Pre-Alert
+## New in v2.3.1: Two-Tier Alert Display + Cat 10 Pre-Alert
 
 - **No more missed visual alerts** - Daemon now writes `display_until_unix` (at least 180s from first detection). Red banner guaranteed to survive slow statusline refreshes.
-- **Recent alert tier** - After the red banner expires, shows `🔴 Recent: MISSILES · Ramla · 2m ago` in red text for up to 5 minutes.
-- **Cat 10 pre-alert** - Cat 10 with title "בדקות הקרובות צפויות להתקבל התרעות" (alerts expected) is now treated as pre-alert, not ignored.
-- **Cat 10 event ended** - Cat 10 with title "האירוע הסתיים" still correctly skipped.
+- **Recent alert tier** - After the red banner expires, shows `🔴 Recent: MISSILES · Ramla · 2m ago` in red text for up to 5 minutes. City filter applied.
+- **Cat 10 pre-alert** - Cat 10 with title "בדקות הקרובות צפויות להתקבל התרעות" (alerts expected) is now treated as pre-alert with sound.
+- **Cat 10 event ended** - Cat 10 with title "האירוע הסתיים" is logged but display state expires naturally via `display_until_unix`.
+- **Note**: Two-tier display is macOS/Linux (bash) only. PowerShell version uses legacy 60s display.
 
 ```
 Tier 1 (active):  🚀 MISSILES · Ramla · Tel Aviv          (red background, up to 180s)

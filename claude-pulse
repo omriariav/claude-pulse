@@ -1,5 +1,5 @@
 #!/bin/bash
-# claude-pulse v2.3.0: Real-time token usage for Claude Code status line
+# claude-pulse v2.3.1: Real-time token usage for Claude Code status line
 # Uses billing API (transcript) for accurate FULL context usage
 # Falls back to native context_window when transcript unavailable
 # Displays current model name and AI-generated conversation names
@@ -346,7 +346,7 @@ if [[ -n "$RED_ALERT_CITIES" ]] || [[ -n "$RED_ALERT_MODE" ]]; then
             fi
         fi
 
-        if [[ "$alert_active" == "true" ]]; then
+        if [[ "$alert_active" == "true" ]] || [[ "$alert_recent" == "true" ]]; then
             # Get alert icon and label
             case "$alert_cat" in
                 1)   alert_icon="🚀"; alert_label="MISSILES" ;;
@@ -446,8 +446,8 @@ if [[ -n "$RED_ALERT_CITIES" ]] || [[ -n "$RED_ALERT_MODE" ]]; then
                 filtered_cities=$(echo "$filtered_cities" | sed '/^$/d')
             fi
 
-            # Build alert display if we have matching cities (or it's all-clear/pre-alert)
-            if [[ -n "$filtered_cities" ]] || [[ "$alert_cat" == "13" ]] || [[ "$alert_cat" == "14" ]]; then
+            # Build active alert display (red banner) — only for tier 1
+            if [[ "$alert_active" == "true" ]] && { [[ -n "$filtered_cities" ]] || [[ "$alert_cat" == "13" ]] || [[ "$alert_cat" == "14" ]]; }; then
                 city_count=$(echo "$filtered_cities" | grep -c .)
                 red_bg="\033[41;97m"
                 green_bg="\033[42;97m"
@@ -483,20 +483,9 @@ if [[ -n "$RED_ALERT_CITIES" ]] || [[ -n "$RED_ALERT_MODE" ]]; then
         fi
 
         # Tier 2: Recent alert (subtle, past display_until but within 5 min)
-        if [[ "$alert_recent" == "true" ]] && [[ -z "$alert_segment" ]]; then
-            case "$alert_cat" in
-                1)   alert_icon="🚀"; alert_label="MISSILES" ;;
-                2)   alert_icon="✈️";  alert_label="AIRCRAFT" ;;
-                6)   alert_icon="✈️";  alert_label="UAV" ;;
-                14)  alert_icon="⚠️";  alert_label="PRE-ALERT" ;;
-                *)   alert_icon="⚠️";  alert_label="ALERT" ;;
-            esac
-            all_cities_en=$(echo "$alert_data" | jq -r '.cities_en[]?' 2>/dev/null)
-            if [[ -n "$all_cities_en" ]]; then
-                city_preview=$(echo "$all_cities_en" | head -2 | tr '\n' ',' | sed 's/,$//' | sed 's/,/ · /g')
-            else
-                city_preview=$(echo "$alert_data" | jq -r '.cities[]?' 2>/dev/null | head -2 | tr '\n' ',' | sed 's/,$//' | sed 's/,/ · /g')
-            fi
+        # filtered_cities already computed above (shared with active tier)
+        if [[ "$alert_recent" == "true" ]] && [[ -z "$alert_segment" ]] && [[ -n "$filtered_cities" ]]; then
+            city_preview=$(echo "$filtered_cities" | head -2 | tr '\n' ',' | sed 's/,$//' | sed 's/,/ · /g')
             mins_ago=$(( (now - alert_first_seen) / 60 ))
             alert_segment="\n\033[31m🔴 Recent: ${alert_icon} ${alert_label} · ${city_preview} · ${mins_ago}m ago${reset}"
         fi
