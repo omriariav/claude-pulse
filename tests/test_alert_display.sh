@@ -29,12 +29,31 @@ assert_contains "$output" "MISSILES" "active alert shows MISSILES label"
 assert_contains "$output" "תל אביב" "active alert shows Tel Aviv"
 assert_contains "$output" "רמת גן" "active alert shows Ramat Gan"
 
-# test_expired_alert: state older than 60s → shows listening, not alert
+# test_expired_alert: state older than 60s (no display_until) → shows listening
 export RED_ALERT_MODE="all"
 setup_expired_state "1" '["תל אביב"]'
 output=$(run_pulse)
 assert_not_contains "$output" "🚀" "expired alert not shown"
 assert_contains "$output" "🟢" "expired alert shows daemon ON indicator"
+
+# test_recent_alert: display_until passed but within 5 min → shows "Recent"
+export RED_ALERT_MODE="all"
+now=$(date +%s)
+cat > "$RED_ALERT_STATE_FILE" <<EOF
+{"alert_id":"test_recent","cat":"1","title":"ירי רקטות וטילים","cities":["תל אביב"],"cities_en":["Tel Aviv"],"last_seen_unix":$((now-120)),"cleared_unix":0,"first_seen_unix":$((now-120)),"display_until_unix":$((now-10))}
+EOF
+output=$(run_pulse)
+assert_contains "$output" "Recent" "recent alert shows Recent label"
+assert_contains "$output" "🔴" "recent alert shows red dot"
+
+# test_active_display_until: within display_until → shows red banner
+export RED_ALERT_MODE="all"
+cat > "$RED_ALERT_STATE_FILE" <<EOF
+{"alert_id":"test_active","cat":"1","title":"ירי רקטות וטילים","cities":["תל אביב"],"cities_en":["Tel Aviv"],"last_seen_unix":$((now-90)),"cleared_unix":0,"first_seen_unix":$((now-90)),"display_until_unix":$((now+90))}
+EOF
+output=$(run_pulse)
+assert_contains "$output" "🚀" "display_until active shows rocket"
+assert_contains "$output" "MISSILES" "display_until active shows MISSILES"
 
 # test_city_filter: only matching cities shown
 export RED_ALERT_CITIES="Tel Aviv"

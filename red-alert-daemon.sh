@@ -53,10 +53,28 @@ write_state() {
 # Build state JSON safely using jq (handles quotes/escapes in API data)
 build_state() {
     local id="$1" cat="$2" title="$3" cities="$4" cities_en="$5" last_seen="$6" cleared="$7"
+    # Determine first_seen: keep existing if same alert, otherwise use last_seen
+    local first_seen="$last_seen"
+    if [[ -f "$STATE_FILE" ]]; then
+        local prev_id prev_first
+        prev_id=$(jq -r '.alert_id // ""' "$STATE_FILE" 2>/dev/null)
+        prev_first=$(jq -r '.first_seen_unix // 0' "$STATE_FILE" 2>/dev/null)
+        if [[ "$prev_id" == "$id" ]] && [[ "$prev_first" != "0" ]] && [[ "$prev_first" != "null" ]]; then
+            first_seen="$prev_first"
+        fi
+    fi
+    # Display until: max(last_seen + 60, first_seen + 180) for active alerts
+    local display_until=0
+    if [[ "$cleared" == "0" ]] && [[ -n "$cat" ]] && [[ "$cat" != "" ]]; then
+        local opt1=$(( last_seen + 60 ))
+        local opt2=$(( first_seen + 180 ))
+        display_until=$(( opt1 > opt2 ? opt1 : opt2 ))
+    fi
     jq -n --arg id "$id" --arg cat "$cat" --arg title "$title" \
         --argjson cities "$cities" --argjson cities_en "$cities_en" \
         --argjson last_seen "$last_seen" --argjson cleared "$cleared" \
-        '{alert_id:$id,cat:$cat,title:$title,cities:$cities,cities_en:$cities_en,last_seen_unix:$last_seen,cleared_unix:$cleared}'
+        --argjson first_seen "$first_seen" --argjson display_until "$display_until" \
+        '{alert_id:$id,cat:$cat,title:$title,cities:$cities,cities_en:$cities_en,last_seen_unix:$last_seen,cleared_unix:$cleared,first_seen_unix:$first_seen,display_until_unix:$display_until}'
 }
 
 # Play alert sound (only once per alert_id, non-blocking)
@@ -340,8 +358,20 @@ while true; do
             fi
             ;;
         10)
-            # Event ended (האירוע הסתיים) — log only, don't display or sound
-            log "EVENT ENDED cat=$cat_val title=$title id=$alert_id cities=$cities"
+            # Cat 10 has multiple meanings based on title
+            if [[ "$title" == *"הסתיים"* ]]; then
+                # Event ended (האירוע הסתיים) — clear state so red banner stops
+                log "EVENT ENDED cat=$cat_val title=$title id=$alert_id cities=$cities"
+                write_state "$(build_state "" "" "" "[]" "[]" 0 "$now")"
+            else
+                # Pre-alert or other warning (e.g., "בדקות הקרובות צפויות להתקבל התרעות")
+                log "PRE-ALERT cat=$cat_val title=$title id=$alert_id cities=$cities"
+                cities_en=$(translate_cities "$cities")
+                write_state "$(build_state "$alert_id" "14" "$title" "$cities" "$cities_en" "$now" 0)"
+                if cities_match_filter "$cities" "$cities_en"; then
+                    play_sound "$SOUND_DIR/early.m4a" "$alert_id"
+                fi
+            fi
             ;;
         1|2|3|4|5|6|7|8|9|11|12|101|102|103|104|105|106|107)
             # Active alert or drill

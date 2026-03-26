@@ -1,5 +1,29 @@
 # Release Notes
 
+## v2.3.0 - Two-Tier Alert Display + Cat 10 Pre-Alert
+
+**Released:** March 26, 2026
+
+### What's New
+
+- **Two-tier alert display** — Daemon writes `first_seen_unix` and `display_until_unix` to state. Red banner shows for `max(last_seen + 60, first_seen + 180)`, guaranteeing at least 3 minutes of visibility regardless of statusline refresh rate. After that, a subtle "Recent" indicator shows for up to 5 minutes.
+- **Cat 10 title-based routing** — Cat 10 "האירוע הסתיים" (event ended) is still skipped. But cat 10 "בדקות הקרובות צפויות להתקבל התרעות" (alerts expected in your area) is now treated as pre-alert with sound.
+
+### Why
+
+A real missile alert hit Ramla at 08:23 — sound played correctly but the red banner never showed because the statusline refreshed after the 60s window expired. This was a safety gap: you heard the siren but had no visual confirmation of which cities were affected.
+
+### Upgrade
+
+```bash
+cd claude-pulse
+git pull
+cp red-alert-daemon.sh ~/.claude/red-alert-daemon.sh
+cp claude-pulse ~/.claude/statusline-command.sh
+```
+
+---
+
 ## v2.2.2 - Fix Daemon Dying During Idle Sessions
 
 **Released:** March 26, 2026

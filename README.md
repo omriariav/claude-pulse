@@ -1,15 +1,26 @@
 # claude-pulse
 
-> Real-time token usage monitoring for Claude Code status line | **v2.2.2**
+> Real-time token usage monitoring for Claude Code status line | **v2.3.0**
 
 **claude-pulse** displays your current Claude Code token usage directly in your status line, helping you stay aware of context consumption without running `/context` manually.
 
-## New in v2.2.2: Fix Daemon Dying During Idle Sessions
+## New in v2.3.0: Two-Tier Alert Display + Cat 10 Pre-Alert
 
-- **pgrep suppresses heartbeat** - If `pgrep` confirms Claude Code is alive, heartbeat stale check is skipped. Previously both checks were independent, causing the daemon to die during idle sessions even though CC was running.
-- **No more missed alerts** - Daemon stays alive as long as Claude Code is open, even if the statusline hasn't refreshed in 5+ minutes.
+- **No more missed visual alerts** - Daemon now writes `display_until_unix` (at least 180s from first detection). Red banner guaranteed to survive slow statusline refreshes.
+- **Recent alert tier** - After the red banner expires, shows `🔴 Recent: MISSILES · Ramla · 2m ago` in red text for up to 5 minutes.
+- **Cat 10 pre-alert** - Cat 10 with title "בדקות הקרובות צפויות להתקבל התרעות" (alerts expected) is now treated as pre-alert, not ignored.
+- **Cat 10 event ended** - Cat 10 with title "האירוע הסתיים" still correctly skipped.
+
+```
+Tier 1 (active):  🚀 MISSILES · Ramla · Tel Aviv          (red background, up to 180s)
+Tier 2 (recent):  🔴 Recent: 🚀 MISSILES · Ramla · 2m ago (red text, up to 5 min)
+```
 
 ## Previous Updates
+
+### v2.2.2: Fix Daemon Dying During Idle Sessions
+
+- pgrep suppresses heartbeat — daemon stays alive as long as Claude Code is open.
 
 ### v2.2.0: Daemon Stability + Category Fixes from Real Alerts
 

@@ -1,5 +1,5 @@
 #!/bin/bash
-# claude-pulse v2.2.2: Real-time token usage for Claude Code status line
+# claude-pulse v2.3.0: Real-time token usage for Claude Code status line
 # Uses billing API (transcript) for accurate FULL context usage
 # Falls back to native context_window when transcript unavailable
 # Displays current model name and AI-generated conversation names
@@ -318,20 +318,32 @@ if [[ -n "$RED_ALERT_CITIES" ]] || [[ -n "$RED_ALERT_MODE" ]]; then
         alert_cat=$(echo "$alert_data" | jq -r '.cat // ""' 2>/dev/null)
         alert_last_seen=$(echo "$alert_data" | jq -r '.last_seen_unix // 0' 2>/dev/null)
         alert_cleared=$(echo "$alert_data" | jq -r '.cleared_unix // 0' 2>/dev/null)
+        alert_first_seen=$(echo "$alert_data" | jq -r '.first_seen_unix // 0' 2>/dev/null)
+        alert_display_until=$(echo "$alert_data" | jq -r '.display_until_unix // 0' 2>/dev/null)
         now=$(date +%s)
 
-        # Determine if alert is active (within persistence windows)
+        # Determine alert display state
+        # Tier 1: Active (red banner) — within display_until or legacy fallback
+        # Tier 2: Recent (subtle) — within 5 min of first_seen
         alert_active=false
+        alert_recent=false
         if [[ -n "$alert_cat" ]] && [[ "$alert_cat" != "" ]] && [[ "$alert_cat" != "null" ]]; then
-            age=$(( now - alert_last_seen ))
-            case "$alert_cat" in
-                13) # All clear: show for 15s
-                    (( age <= 15 )) && alert_active=true ;;
-                14) # Pre-alert: show for 20 min
-                    (( age <= 1200 )) && alert_active=true ;;
-                *) # Active alerts: show for 60s
-                    (( age <= 60 )) && alert_active=true ;;
-            esac
+            if [[ "$alert_display_until" != "0" ]] && [[ "$alert_display_until" != "null" ]]; then
+                # New format: use display_until_unix
+                if (( now <= alert_display_until )); then
+                    alert_active=true
+                elif (( alert_first_seen > 0 )) && (( now - alert_first_seen <= 300 )); then
+                    alert_recent=true
+                fi
+            else
+                # Legacy format: fallback to old behavior
+                age=$(( now - alert_last_seen ))
+                case "$alert_cat" in
+                    13) (( age <= 15 )) && alert_active=true ;;
+                    14) (( age <= 1200 )) && alert_active=true ;;
+                    *) (( age <= 60 )) && alert_active=true ;;
+                esac
+            fi
         fi
 
         if [[ "$alert_active" == "true" ]]; then
@@ -468,6 +480,25 @@ if [[ -n "$RED_ALERT_CITIES" ]] || [[ -n "$RED_ALERT_MODE" ]]; then
                     alert_segment="\n${red_bg}${alert_icon} ${alert_test_prefix}${alert_label} · ${city_count} cities · ${cycling_city}${reset}"
                 fi
             fi
+        fi
+
+        # Tier 2: Recent alert (subtle, past display_until but within 5 min)
+        if [[ "$alert_recent" == "true" ]] && [[ -z "$alert_segment" ]]; then
+            case "$alert_cat" in
+                1)   alert_icon="🚀"; alert_label="MISSILES" ;;
+                2)   alert_icon="✈️";  alert_label="AIRCRAFT" ;;
+                6)   alert_icon="✈️";  alert_label="UAV" ;;
+                14)  alert_icon="⚠️";  alert_label="PRE-ALERT" ;;
+                *)   alert_icon="⚠️";  alert_label="ALERT" ;;
+            esac
+            all_cities_en=$(echo "$alert_data" | jq -r '.cities_en[]?' 2>/dev/null)
+            if [[ -n "$all_cities_en" ]]; then
+                city_preview=$(echo "$all_cities_en" | head -2 | tr '\n' ',' | sed 's/,$//' | sed 's/,/ · /g')
+            else
+                city_preview=$(echo "$alert_data" | jq -r '.cities[]?' 2>/dev/null | head -2 | tr '\n' ',' | sed 's/,$//' | sed 's/,/ · /g')
+            fi
+            mins_ago=$(( (now - alert_first_seen) / 60 ))
+            alert_segment="\n\033[31m🔴 Recent: ${alert_icon} ${alert_label} · ${city_preview} · ${mins_ago}m ago${reset}"
         fi
     fi
 fi
