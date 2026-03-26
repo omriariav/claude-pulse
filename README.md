@@ -1,15 +1,17 @@
 # claude-pulse
 
-> Real-time token usage monitoring for Claude Code status line | **v2.4.0**
+> Real-time token usage monitoring for Claude Code status line | **v2.4.2**
 
 **claude-pulse** displays your current Claude Code token usage directly in your status line, helping you stay aware of context consumption without running `/context` manually.
 
-## New in v2.4.0: Alert Logic Refactor
+## New in v2.4.2: Alert City Merging + Logic Refactor
 
+- **Alert city merging** - Multiple alert waves for different areas now accumulate cities instead of overwriting. A missile alert for Tel Aviv stays visible even when a new wave hits Sharon area (#18).
 - **Per-sound-class cooldown** - Missiles: 40s, pre-alerts: 120s, tracked independently. No more triple pre-alert sounds (#13).
 - **Pre-alert fallback fix** - Pre-alerts now display correctly when main alert is filtered out by city (#16).
+- **Extracted filter functions** - City filter and alert evaluation extracted into reusable functions with explicit winner matrix.
 - **Consolidated jq calls** - Alert section: 18 jq calls reduced to 4. Input parsing: 6 reduced to 1.
-- **79 tests** across 5 suites (city filter, daemon sound, alert display, daemon lifecycle, statusline).
+- **93 tests** across 6 suites (alert merge, city filter, daemon sound, alert display, daemon lifecycle, statusline).
 
 ## Previous Updates
 
@@ -78,7 +80,7 @@ Real-time Pikud HaOref (Israel Home Front Command) rocket alert notifications in
 - **launchd integration** - Daemon managed by macOS LaunchAgent, single instance guaranteed
 - **Heartbeat lifecycle** - Daemon self-terminates 30s after all Claude Code instances close
 - **Interactive setup** - `/setup-red-alert` command with city/zone selection
-- **Test suite** - 79 tests across 5 suites
+- **Test suite** - 93 tests across 6 suites
 
 ### v1.7.1: Context Window Label
 

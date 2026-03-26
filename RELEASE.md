@@ -1,5 +1,25 @@
 # Release Notes
 
+## v2.4.2 - Alert City Merging (Main + Pre-Alert)
+
+**Released:** March 26, 2026
+
+### What's Fixed
+
+v2.4.1 only merged pre-alert cities. This release also merges main alert cities. When multiple missile waves hit different areas, all cities accumulate in the state file until their TTL expires. Discovered during a live alert where Tel Aviv disappeared from display when a subsequent wave hit the Sharon area.
+
+Added 11 tests covering all merge paths: main alert merge, pre-alert merge, back-to-back pre-alerts, expiry boundary, same-ID dedup, and cross-category non-merge.
+
+### Upgrade
+
+```bash
+cd claude-pulse
+git pull
+cp red-alert-daemon.sh ~/.claude/red-alert-daemon.sh
+```
+
+---
+
 ## v2.4.1 - Pre-Alert City Merge
 
 **Released:** March 26, 2026
