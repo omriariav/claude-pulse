@@ -64,6 +64,16 @@ output=$(run_pulse)
 assert_contains "$output" "Pre-alert" "priority: active pre-alert beats recent missile"
 assert_not_contains "$output" "Recent" "priority: recent missile hidden by active pre-alert"
 
+# test_pre_alert_fallback: main alert active but no city match, pre_alert matches
+export RED_ALERT_CITIES="Tel Aviv"
+unset RED_ALERT_MODE
+cat > "$RED_ALERT_STATE_FILE" <<EOF
+{"alert_id":"uav1","cat":"6","title":"t","cities":["מטולה"],"cities_en":["Metula"],"last_seen_unix":$now,"cleared_unix":0,"first_seen_unix":$now,"display_until_unix":$((now+120)),"pre_alert":{"alert_id":"p1","cat":"14","title":"pre","cities":["תל אביב - עבר הירקון"],"cities_en":["Tel Aviv - Across the Yarkon"],"last_seen_unix":$now,"first_seen_unix":$now,"display_until_unix":$((now+120))}}
+EOF
+output=$(run_pulse)
+assert_contains "$output" "Pre-alert" "pre_alert fallback: shows pre-alert when main has no city match"
+assert_not_contains "$output" "daemon ON" "pre_alert fallback: not showing daemon ON"
+
 # test_city_filter: only matching cities shown
 export RED_ALERT_CITIES="Tel Aviv"
 unset RED_ALERT_MODE

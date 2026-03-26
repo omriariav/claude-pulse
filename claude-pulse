@@ -462,6 +462,48 @@ if [[ -n "$RED_ALERT_CITIES" ]] || [[ -n "$RED_ALERT_MODE" ]]; then
                 filtered_cities=$(echo "$filtered_cities" | sed '/^$/d')
             fi
 
+            # If main alert has no matching cities, try pre_alert before rendering
+            if [[ -z "$filtered_cities" ]] && [[ "$alert_cat" != "13" ]] && [[ "$alert_cat" != "14" ]]; then
+                _pre_json=$(echo "$alert_data" | jq -r '.pre_alert // null' 2>/dev/null)
+                if [[ -n "$_pre_json" ]] && [[ "$_pre_json" != "null" ]]; then
+                    _pre_du=$(echo "$_pre_json" | jq -r '.display_until_unix // 0' 2>/dev/null)
+                    if [[ "$_pre_du" != "0" ]] && (( now <= _pre_du )); then
+                        # Swap to pre_alert and re-run city filter
+                        alert_cat=$(echo "$_pre_json" | jq -r '.cat // ""' 2>/dev/null)
+                        alert_first_seen=$(echo "$_pre_json" | jq -r '.first_seen_unix // 0' 2>/dev/null)
+                        alert_display_until="$_pre_du"
+                        all_cities_en=$(echo "$_pre_json" | jq -r '.cities_en[]?' 2>/dev/null)
+                        all_cities_he=$(echo "$_pre_json" | jq -r '.cities[]?' 2>/dev/null)
+                        if [[ -n "$all_cities_en" ]]; then all_cities="$all_cities_en"; else all_cities="$all_cities_he"; fi
+                        # Re-run city filter for pre_alert cities
+                        if [[ "$RED_ALERT_MODE" == "all" ]] || [[ -z "$RED_ALERT_CITIES" ]]; then
+                            filtered_cities="$all_cities"
+                        else
+                            filtered_cities=""
+                            city_en_arr=(); city_he_arr=()
+                            while IFS= read -r c; do [[ -n "$c" ]] && city_en_arr+=("$c"); done <<< "$all_cities_en"
+                            while IFS= read -r c; do [[ -n "$c" ]] && city_he_arr+=("$c"); done <<< "$all_cities_he"
+                            for i in "${!city_en_arr[@]}"; do
+                                city="${city_en_arr[$i]}"; city_he="${city_he_arr[$i]:-}"
+                                [[ -z "$city" ]] && continue
+                                for filter in "${city_filters[@]}"; do
+                                    filter=$(echo "$filter" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | tr '[:upper:]' '[:lower:]')
+                                    city_lower=$(echo "$city" | tr '[:upper:]' '[:lower:]')
+                                    if [[ "$city_lower" == *"$filter"* ]] || [[ "$city" == *"$filter"* ]]; then
+                                        filtered_cities="${filtered_cities}${city}"$'\n'; break
+                                    fi
+                                done
+                            done
+                            filtered_cities=$(echo "$filtered_cities" | sed '/^$/d')
+                        fi
+                        # Update icon/label for pre-alert
+                        case "$alert_cat" in
+                            14) alert_icon="⚠️"; alert_label="PRE-ALERT" ;;
+                        esac
+                    fi
+                fi
+            fi
+
             # Build active alert display (red banner) — only for tier 1
             if [[ "$alert_active" == "true" ]] && { [[ -n "$filtered_cities" ]] || [[ "$alert_cat" == "13" ]] || [[ "$alert_cat" == "14" ]]; }; then
                 city_count=$(echo "$filtered_cities" | grep -c .)
