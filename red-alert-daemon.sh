@@ -365,7 +365,6 @@ while true; do
                 log "EVENT ENDED cat=$cat_val title=$title id=$alert_id cities=$cities"
                 if [[ -f "$STATE_FILE" ]]; then
                     # Expire the display_until on existing state
-                    local prev_state
                     prev_state=$(cat "$STATE_FILE" 2>/dev/null)
                     if [[ -n "$prev_state" ]]; then
                         echo "$prev_state" | jq --argjson now "$now" '.display_until_unix = $now | .cleared_unix = $now' > "${STATE_FILE}.$$" && mv -f "${STATE_FILE}.$$" "$STATE_FILE"
