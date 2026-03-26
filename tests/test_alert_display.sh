@@ -55,6 +55,15 @@ output=$(run_pulse)
 assert_contains "$output" "🚀" "display_until active shows rocket"
 assert_contains "$output" "MISSILES" "display_until active shows MISSILES"
 
+# test_priority: expired missile + active pre_alert → shows pre-alert, not recent missile
+export RED_ALERT_MODE="all"
+cat > "$RED_ALERT_STATE_FILE" <<EOF
+{"alert_id":"m1","cat":"1","title":"missiles","cities":["תל אביב"],"cities_en":["Tel Aviv"],"last_seen_unix":$((now-200)),"cleared_unix":0,"first_seen_unix":$((now-200)),"display_until_unix":$((now-100)),"pre_alert":{"alert_id":"p1","cat":"14","title":"pre","cities":["תל אביב"],"cities_en":["Tel Aviv"],"last_seen_unix":$((now-60)),"first_seen_unix":$((now-60)),"display_until_unix":$((now+120))}}
+EOF
+output=$(run_pulse)
+assert_contains "$output" "Pre-alert" "priority: active pre-alert beats recent missile"
+assert_not_contains "$output" "Recent" "priority: recent missile hidden by active pre-alert"
+
 # test_city_filter: only matching cities shown
 export RED_ALERT_CITIES="Tel Aviv"
 unset RED_ALERT_MODE

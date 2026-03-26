@@ -1,10 +1,16 @@
 # claude-pulse
 
-> Real-time token usage monitoring for Claude Code status line | **v2.3.1**
+> Real-time token usage monitoring for Claude Code status line | **v2.3.2**
 
 **claude-pulse** displays your current Claude Code token usage directly in your status line, helping you stay aware of context consumption without running `/context` manually.
 
-## New in v2.3.1: Two-Tier Alert Display + Cat 10 Pre-Alert
+## New in v2.3.2: Sound Cooldown Fix
+
+- **Sound cooldown increased to 40s** - Pre-alerts were playing sound 3 times in 45 seconds. Temporary fix while a per-category cooldown solution is designed (#13).
+
+## Previous Updates
+
+### v2.3.1: Two-Tier Alert Display + Cat 10 Pre-Alert
 
 - **No more missed visual alerts** - Daemon now writes `display_until_unix` (at least 180s from first detection). Red banner guaranteed to survive slow statusline refreshes.
 - **Recent alert tier** - After the red banner expires, shows `🔴 Recent: MISSILES · Ramla · 2m ago` in red text for up to 5 minutes. City filter applied.

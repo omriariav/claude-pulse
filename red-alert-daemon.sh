@@ -70,11 +70,58 @@ build_state() {
         local opt2=$(( first_seen + 180 ))
         display_until=$(( opt1 > opt2 ? opt1 : opt2 ))
     fi
+    # Handle pre_alert coexistence:
+    # - Missile/UAV (1/2/6) overwriting pre-alert → save pre-alert in pre_alert field
+    # - Pre-alert arriving while missile is active → store in pre_alert, keep missile as main
+    local pre_alert="null"
+    if [[ -f "$STATE_FILE" ]]; then
+        local prev_cat
+        prev_cat=$(jq -r '.cat // ""' "$STATE_FILE" 2>/dev/null)
+        if [[ "$cat" == "14" ]] && [[ "$prev_cat" =~ ^(1|2|6)$ ]]; then
+            # Pre-alert arriving while missile/UAV is main → don't overwrite, store as pre_alert
+            # Preserve first_seen if same pre-alert ID already stored
+            local pre_first_seen="$first_seen"
+            local existing_pre_id
+            existing_pre_id=$(jq -r '.pre_alert.alert_id // ""' "$STATE_FILE" 2>/dev/null)
+            if [[ "$existing_pre_id" == "$id" ]]; then
+                local existing_pre_first
+                existing_pre_first=$(jq -r '.pre_alert.first_seen_unix // 0' "$STATE_FILE" 2>/dev/null)
+                if [[ "$existing_pre_first" != "0" ]] && [[ "$existing_pre_first" != "null" ]]; then
+                    pre_first_seen="$existing_pre_first"
+                fi
+            fi
+            local pre_display_until
+            local p_opt1=$(( last_seen + 60 ))
+            local p_opt2=$(( pre_first_seen + 180 ))
+            pre_display_until=$(( p_opt1 > p_opt2 ? p_opt1 : p_opt2 ))
+            local pre_obj
+            pre_obj=$(jq -n --arg id "$id" --arg cat "$cat" --arg title "$title" \
+                --argjson cities "$cities" --argjson cities_en "$cities_en" \
+                --argjson last_seen "$last_seen" --argjson first_seen "$pre_first_seen" \
+                --argjson display_until "$pre_display_until" \
+                '{alert_id:$id,cat:$cat,title:$title,cities:$cities,cities_en:$cities_en,last_seen_unix:$last_seen,first_seen_unix:$first_seen,display_until_unix:$display_until}')
+            jq --argjson pa "$pre_obj" '.pre_alert = $pa' "$STATE_FILE"
+            return
+        elif [[ "$prev_cat" == "14" ]] && [[ "$cat" =~ ^(1|2|6)$ ]]; then
+            # Missile/UAV overwriting pre-alert → preserve pre-alert
+            pre_alert=$(jq -c '{alert_id,cat,title,cities,cities_en,last_seen_unix,first_seen_unix,display_until_unix}' "$STATE_FILE" 2>/dev/null)
+        else
+            # Carry forward pre_alert only for active alerts (1/2/6), not all-clear or empty
+            if [[ "$cat" =~ ^(1|2|6)$ ]]; then
+                local existing_pre
+                existing_pre=$(jq -c '.pre_alert // null' "$STATE_FILE" 2>/dev/null)
+                if [[ -n "$existing_pre" ]] && [[ "$existing_pre" != "null" ]]; then
+                    pre_alert="$existing_pre"
+                fi
+            fi
+        fi
+    fi
     jq -n --arg id "$id" --arg cat "$cat" --arg title "$title" \
         --argjson cities "$cities" --argjson cities_en "$cities_en" \
         --argjson last_seen "$last_seen" --argjson cleared "$cleared" \
         --argjson first_seen "$first_seen" --argjson display_until "$display_until" \
-        '{alert_id:$id,cat:$cat,title:$title,cities:$cities,cities_en:$cities_en,last_seen_unix:$last_seen,cleared_unix:$cleared,first_seen_unix:$first_seen,display_until_unix:$display_until}'
+        --argjson pre_alert "$pre_alert" \
+        '{alert_id:$id,cat:$cat,title:$title,cities:$cities,cities_en:$cities_en,last_seen_unix:$last_seen,cleared_unix:$cleared,first_seen_unix:$first_seen,display_until_unix:$display_until,pre_alert:$pre_alert}'
 }
 
 # Play alert sound (only once per alert_id, non-blocking)
@@ -83,7 +130,7 @@ play_sound() {
     local current_alert_id="$2"
     # Skip if sound disabled or played recently (cooldown configurable via RED_ALERT_SOUND_COOLDOWN)
     if [[ "$RED_ALERT_SOUND" == "off" ]]; then return; fi
-    local cooldown="${RED_ALERT_SOUND_COOLDOWN:-20}"
+    local cooldown="${RED_ALERT_SOUND_COOLDOWN:-40}"
     if [[ -f "$SOUND_PLAYED_FILE" ]]; then
         local last_time
         last_time=$(cat "$SOUND_PLAYED_FILE" 2>/dev/null)
