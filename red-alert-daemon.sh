@@ -70,11 +70,42 @@ build_state() {
         local opt2=$(( first_seen + 180 ))
         display_until=$(( opt1 > opt2 ? opt1 : opt2 ))
     fi
+    # Handle pre_alert coexistence:
+    # - Missile/UAV (1/2/6) overwriting pre-alert → save pre-alert in pre_alert field
+    # - Pre-alert arriving while missile is active → store in pre_alert, keep missile as main
+    local pre_alert="null"
+    if [[ -f "$STATE_FILE" ]]; then
+        local prev_cat
+        prev_cat=$(jq -r '.cat // ""' "$STATE_FILE" 2>/dev/null)
+        if [[ "$cat" == "14" ]] && [[ "$prev_cat" =~ ^(1|2|6)$ ]]; then
+            # Pre-alert arriving while missile/UAV is main → don't overwrite, store as pre_alert
+            local pre_obj
+            pre_obj=$(jq -n --arg id "$id" --arg cat "$cat" --arg title "$title" \
+                --argjson cities "$cities" --argjson cities_en "$cities_en" \
+                --argjson last_seen "$last_seen" --argjson first_seen "$first_seen" \
+                --argjson display_until "$display_until" \
+                '{alert_id:$id,cat:$cat,title:$title,cities:$cities,cities_en:$cities_en,last_seen_unix:$last_seen,first_seen_unix:$first_seen,display_until_unix:$display_until}')
+            # Update existing state with pre_alert field only
+            jq --argjson pa "$pre_obj" '.pre_alert = $pa' "$STATE_FILE"
+            return
+        elif [[ "$prev_cat" == "14" ]] && [[ "$cat" =~ ^(1|2|6)$ ]]; then
+            # Missile/UAV overwriting pre-alert → preserve pre-alert
+            pre_alert=$(jq -c '{alert_id,cat,title,cities,cities_en,last_seen_unix,first_seen_unix,display_until_unix}' "$STATE_FILE" 2>/dev/null)
+        else
+            # Carry forward existing pre_alert if present
+            local existing_pre
+            existing_pre=$(jq -c '.pre_alert // null' "$STATE_FILE" 2>/dev/null)
+            if [[ -n "$existing_pre" ]] && [[ "$existing_pre" != "null" ]]; then
+                pre_alert="$existing_pre"
+            fi
+        fi
+    fi
     jq -n --arg id "$id" --arg cat "$cat" --arg title "$title" \
         --argjson cities "$cities" --argjson cities_en "$cities_en" \
         --argjson last_seen "$last_seen" --argjson cleared "$cleared" \
         --argjson first_seen "$first_seen" --argjson display_until "$display_until" \
-        '{alert_id:$id,cat:$cat,title:$title,cities:$cities,cities_en:$cities_en,last_seen_unix:$last_seen,cleared_unix:$cleared,first_seen_unix:$first_seen,display_until_unix:$display_until}'
+        --argjson pre_alert "$pre_alert" \
+        '{alert_id:$id,cat:$cat,title:$title,cities:$cities,cities_en:$cities_en,last_seen_unix:$last_seen,cleared_unix:$cleared,first_seen_unix:$first_seen,display_until_unix:$display_until,pre_alert:$pre_alert}'
 }
 
 # Play alert sound (only once per alert_id, non-blocking)

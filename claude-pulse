@@ -323,26 +323,41 @@ if [[ -n "$RED_ALERT_CITIES" ]] || [[ -n "$RED_ALERT_MODE" ]]; then
         now=$(date +%s)
 
         # Determine alert display state
-        # Tier 1: Active (red banner) — within display_until or legacy fallback
-        # Tier 2: Recent (subtle) — within 5 min of first_seen
+        # Priority: missile/UAV (1/2/6) > pre-alert (14) > recent > daemon status
         alert_active=false
         alert_recent=false
         if [[ -n "$alert_cat" ]] && [[ "$alert_cat" != "" ]] && [[ "$alert_cat" != "null" ]]; then
             if [[ "$alert_display_until" != "0" ]] && [[ "$alert_display_until" != "null" ]]; then
-                # New format: use display_until_unix
                 if (( now <= alert_display_until )); then
                     alert_active=true
                 elif (( alert_first_seen > 0 )) && (( now - alert_first_seen <= 300 )); then
                     alert_recent=true
                 fi
             else
-                # Legacy format: fallback to old behavior
                 age=$(( now - alert_last_seen ))
                 case "$alert_cat" in
                     13) (( age <= 15 )) && alert_active=true ;;
                     14) (( age <= 1200 )) && alert_active=true ;;
                     *) (( age <= 60 )) && alert_active=true ;;
                 esac
+            fi
+        fi
+
+        # If main alert expired, fall back to pre_alert if active
+        if [[ "$alert_active" == "false" ]] && [[ "$alert_recent" == "false" ]]; then
+            _pre_alert=$(echo "$alert_data" | jq -r '.pre_alert // null' 2>/dev/null)
+            if [[ -n "$_pre_alert" ]] && [[ "$_pre_alert" != "null" ]]; then
+                _pre_cat=$(echo "$_pre_alert" | jq -r '.cat // ""' 2>/dev/null)
+                _pre_display_until=$(echo "$_pre_alert" | jq -r '.display_until_unix // 0' 2>/dev/null)
+                _pre_first_seen=$(echo "$_pre_alert" | jq -r '.first_seen_unix // 0' 2>/dev/null)
+                if [[ "$_pre_display_until" != "0" ]] && (( now <= _pre_display_until )); then
+                    # Pre-alert still active — use it
+                    alert_cat="$_pre_cat"
+                    alert_first_seen="$_pre_first_seen"
+                    alert_display_until="$_pre_display_until"
+                    alert_data="$_pre_alert"
+                    alert_active=true
+                fi
             fi
         fi
 
