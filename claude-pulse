@@ -362,6 +362,10 @@ filter_alert_cities() {
     local city_en_arr=() city_he_arr=()
     while IFS= read -r c; do [[ -n "$c" ]] && city_en_arr+=("$c"); done <<< "$all_cities_en"
     while IFS= read -r c; do [[ -n "$c" ]] && city_he_arr+=("$c"); done <<< "$all_cities_he"
+    # Fallback: if cities_en is missing, iterate Hebrew cities as both display and match source
+    if [[ ${#city_en_arr[@]} -eq 0 ]] && [[ ${#city_he_arr[@]} -gt 0 ]]; then
+        city_en_arr=("${city_he_arr[@]}")
+    fi
 
     local i city city_he filter hebrew city_lower
     for i in "${!city_en_arr[@]}"; do
@@ -370,6 +374,7 @@ filter_alert_cities() {
         [[ -z "$city" ]] && continue
         for filter in "${city_filters[@]}"; do
             filter=$(echo "$filter" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | tr '[:upper:]' '[:lower:]')
+            [[ -z "$filter" ]] && continue
             # Map English filter to Hebrew for cross-language matching
             hebrew=""
             case "$filter" in

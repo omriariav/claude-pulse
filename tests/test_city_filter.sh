@@ -77,5 +77,24 @@ EOF
 output=$(run_pulse)
 assert_contains "$output" "Tel Aviv" "Case insensitive: mixed-case filter matches"
 
+# test_hebrew_only_state: state with only .cities (no cities_en) still filters
+export RED_ALERT_CITIES="תל אביב"
+unset RED_ALERT_MODE
+cat > "$RED_ALERT_STATE_FILE" <<EOF
+{"alert_id":"t7","cat":"1","title":"t","cities":["תל אביב - מרכז העיר"],"last_seen_unix":$now,"cleared_unix":0,"first_seen_unix":$now,"display_until_unix":$((now+120))}
+EOF
+output=$(run_pulse)
+assert_contains "$output" "MISSILES" "Hebrew-only state: alert shown when cities_en missing"
+
+# test_trailing_comma_filter: trailing comma in filter doesn't match everything
+export RED_ALERT_CITIES="Eilat,"
+unset RED_ALERT_MODE
+cat > "$RED_ALERT_STATE_FILE" <<EOF
+{"alert_id":"t8","cat":"1","title":"t","cities":["תל אביב"],"cities_en":["Tel Aviv"],"last_seen_unix":$now,"cleared_unix":0,"first_seen_unix":$now,"display_until_unix":$((now+120))}
+EOF
+output=$(run_pulse)
+assert_not_contains "$output" "MISSILES" "Trailing comma: empty filter entry doesn't match all"
+assert_not_contains "$output" "Tel Aviv" "Trailing comma: Tel Aviv not shown for Eilat filter"
+
 cleanup
 report
