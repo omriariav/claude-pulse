@@ -1,125 +1,8 @@
 # claude-pulse
 
-> Real-time token usage monitoring for Claude Code status line | **v2.5.0**
+> Real-time token usage monitoring for Claude Code status line | **v2.5.1**
 
 **claude-pulse** displays your current Claude Code token usage directly in your status line, helping you stay aware of context consumption without running `/context` manually.
-
-## New in v2.5.0: Native Conversation Names
-
-- **Native `session_name` support** - Claude Code now exposes the conversation name directly in the statusline JSON. No more AI API calls, transcript parsing, or caching needed for conversation names.
-- **Zero-latency names** - Names from `/rename` or Claude Code's auto-generated slugs appear instantly.
-- **Backwards compatible** - Falls back to the existing AI-generated approach (Anthropic/OpenAI/Gemini) for older Claude Code versions without `session_name`.
-- **106 tests** across 6 suites — added tests for conversation name display, truncation, rate limits, and progress bar.
-
-## Previous Updates
-
-### v2.4.2: Alert City Merging + Logic Refactor
-
-- **Alert city merging** - Multiple alert waves for different areas now accumulate cities instead of overwriting. A missile alert for Tel Aviv stays visible even when a new wave hits Sharon area (#18).
-- **Per-sound-class cooldown** - Missiles: 40s, pre-alerts: 120s, tracked independently. No more triple pre-alert sounds (#13).
-- **Pre-alert fallback fix** - Pre-alerts now display correctly when main alert is filtered out by city (#16).
-- **Extracted filter functions** - City filter and alert evaluation extracted into reusable functions with explicit winner matrix.
-- **Consolidated jq calls** - Alert section: 18 jq calls reduced to 4. Input parsing: 6 reduced to 1.
-- **93 tests** across 6 suites (alert merge, city filter, daemon sound, alert display, daemon lifecycle, statusline).
-
-### v2.3.2: Sound Cooldown Fix
-
-- Sound cooldown increased to 40s as temporary fix for pre-alert repetition.
-
-### v2.3.1: Two-Tier Alert Display + Cat 10 Pre-Alert
-
-- **No more missed visual alerts** - Daemon now writes `display_until_unix` (at least 180s from first detection). Red banner guaranteed to survive slow statusline refreshes.
-- **Recent alert tier** - After the red banner expires, shows `🔴 Recent: MISSILES · Ramla · 2m ago` in red text for up to 5 minutes. City filter applied.
-- **Cat 10 pre-alert** - Cat 10 with title "בדקות הקרובות צפויות להתקבל התרעות" (alerts expected) is now treated as pre-alert with sound.
-- **Cat 10 event ended** - Cat 10 with title "האירוע הסתיים" is logged but display state expires naturally via `display_until_unix`.
-- **Note**: Two-tier display is macOS/Linux (bash) only. PowerShell version uses legacy 60s display.
-
-```
-Tier 1 (active):  🚀 MISSILES · Ramla · Tel Aviv          (red background, up to 180s)
-Tier 2 (recent):  🔴 Recent: 🚀 MISSILES · Ramla · 2m ago (red text, up to 5 min)
-```
-
-### v2.2.2: Fix Daemon Dying During Idle Sessions
-
-- pgrep suppresses heartbeat — daemon stays alive as long as Claude Code is open.
-
-### v2.2.0: Daemon Stability + Category Fixes from Real Alerts
-
-- **Cat 6 = UAV, not hazmat** - Real wartime data confirmed cat 6 is "hostile aircraft infiltration" (drones). Now shows `✈️ UAV` and plays alert sound.
-- **Cat 10 = event ended** - Confirmed as "האירוע הסתיים". Logged but no longer displayed or sounded.
-- **Daemon singleton lock** - Atomic `mkdir` lock held for daemon lifetime prevents duplicate daemons and double sounds.
-- **Debug mode** - `RED_ALERT_DEBUG=1` shows daemon count in statusline for diagnostics.
-- **Alert title logging** - Hebrew title from API now logged for identifying unknown categories.
-
-## Previous Updates
-
-### v2.1.1: Sound Only for Actionable Alerts
-
-- Sound narrowed to missiles + aircraft only. Pre-alert plays `early.m4a`. All other categories display visually but stay silent.
-
-### v2.1.0: Rate Limits + Alert Bug Fixes
-
-- **Rate limit display** - Shows `5h: 23% · 7d: 5%` on 2nd line with color-coded 5h usage (Pro/Max only)
-- **Sound city filtering** - Alert sounds now only play for cities matching your `RED_ALERT_CITIES` filter
-- **Daemon auto-restart** - Statusline auto-restarts dead daemon via `launchctl kickstart`
-- **No duplicate daemons** - `pgrep` guard prevents spawning multiple daemon processes
-
-```
-🧠 [████░░░░░░░░░░░░░░░░] 28% · 🤖 Opus 4.6 (200k) · 💬 Topic · 🌿 main 📁 ~/Code/project
-⚡ 5h: 23% · 7d: 5% · 🟢 Alerts daemon ON
-
-🧠 [████░░░░░░░░░░░░░░░░] 28% · 🤖 Opus 4.6 (200k) · 💬 Topic · 🌿 main 📁 ~/Code/project
-⚡5h:39% 7d:8% · 🚀 MISSILES · Tel Aviv - City Center · Ramat Gan - West
-```
-
-## Previous Updates
-
-### v2.0.0: Red Alert (Pikud HaOref)
-
-Real-time Pikud HaOref (Israel Home Front Command) rocket alert notifications in your statusline. Inspired by [lirantal/red-alert-statusline](https://github.com/lirantal/red-alert-statusline).
-
-- **Real-time alerts** - Missiles, hostile aircraft, earthquakes, infiltration, drills, and more
-- **City & zone filtering** - Monitor specific cities or zones with fuzzy matching (English or Hebrew)
-- **English city names** - 1492 locations translated via official oref.org.il districts
-- **Alert sounds** - macOS m4a playback with per-class cooldown (40s missiles, 120s pre-alerts)
-- **launchd integration** - Daemon managed by macOS LaunchAgent, single instance guaranteed
-- **Heartbeat lifecycle** - Daemon self-terminates 30s after all Claude Code instances close
-- **Interactive setup** - `/setup-red-alert` command with city/zone selection
-- **Test suite** - 93 tests across 6 suites
-
-### v1.7.1: Context Window Label
-
-- **Context size in status line** - Shows `(200k)` or `(1M)` next to the model name so you can tell at a glance whether you're in a standard or extended context session
-
-### v1.7.0: Context Bar, Branch/PR, Cleaner Topic UX
-
-- **Visual context bar** - 20-char progress bar shows context consumed at a glance
-- **Git branch + PR** - Shows current branch and open PR number (e.g., `🌿 feat/bar (#42)`)
-- **Cleaner topic names** - Removed noisy quotes, added 20-char truncation with `..`
-
-### v1.6.0: Active Session Names & Opus 4.6
-
-- **Active session names** - Conversation names now work from the first message, even before `/rename` — inferred from transcript content via AI
-- **Opus 4.6 detection** - Correctly identifies `claude-opus-4-6` as "Opus 4.6" in the statusline
-- **1M context ready** - Dynamic detection handles Opus 4.6's extended context window automatically
-- **Refactored API calls** - AI provider logic extracted into reusable functions in both bash and PowerShell
-
-### v1.5.0: Conversation Names & Multi-Provider API Support
-
-- **Conversation names** - Shows AI-generated short names for each conversation
-- **Multi-provider API** - Supports Anthropic, OpenAI, and Gemini APIs for name generation
-- **Smart fallback** - Extracts first 3 words from summary if no API key configured
-
-### v1.4.1: Dynamic Context Window Detection
-- **Dynamic context limits** - Automatically detects and displays correct context window size (200k, 1M, etc.)
-
-### v1.4.0: Model Display
-- **Model display** - Shows current model in use (e.g., "Sonnet 4.5", "Opus 4.5", "Haiku 3.5")
-- **Single-line output** - Token usage, model name, and working directory on one compact line
-
-**Note:** >100% is normal when context exceeds the limit - Claude Code will auto-compact.
-
-See [RELEASE.md](RELEASE.md) for full release notes.
 
 ![claude-pulse in action](screenshot.png)
 
@@ -387,6 +270,24 @@ You can! But claude-pulse offers:
 **Small differences from /context**
 - Difference is typically 2-3k tokens (~3%)
 - Both use context window data, but timing of updates may differ slightly
+
+## Changelog
+
+| Version | Highlights |
+|---------|-----------|
+| **v2.5.1** | Fix Sonnet 4.6 model detection (was showing "Sonnet 4.5") |
+| **v2.5.0** | Native `session_name` support — zero-latency conversation names, no API calls needed |
+| **v2.4.2** | Alert city merging across waves, per-sound-class cooldown, consolidated jq calls |
+| **v2.3.x** | Two-tier alert display (active banner + recent text), Cat 10 pre-alert support |
+| **v2.2.x** | Daemon singleton lock, Cat 6 = UAV fix, heartbeat keeps daemon alive during idle |
+| **v2.1.x** | Rate limit display (5h/7d), sound city filtering, daemon auto-restart |
+| **v2.0.0** | Red Alert (Pikud HaOref) — real-time rocket alerts, city filtering, launchd daemon |
+| **v1.7.x** | Visual context bar, git branch + PR display, context window label |
+| **v1.6.0** | Active session names from transcript, Opus 4.6 + 1M context support |
+| **v1.5.0** | AI conversation names via Anthropic/OpenAI/Gemini |
+| **v1.4.x** | Model display, dynamic context window detection |
+
+See [RELEASE.md](RELEASE.md) for full release notes.
 
 ## Credits
 
