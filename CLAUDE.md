@@ -44,9 +44,9 @@ Three tiers auto-detected from terminal width, overridable with `CLAUDE_PULSE_DE
 - **Regular** (100–159 cols): Two lines, emoji dividers (double-space), 10-char bare bar, `%2d` rate padding for alignment
 - **Heavy** (≥ 160 cols): Two lines, ` · ` dot separators, 20-char bracketed bar, full branch, `~/` path, optional session cost
 
-Key alignment rules for regular mode:
-- Line 2 uses `%2d` for 5h rate and `%3d` for 7d rate so `🟢` lands under `🤖`
-- The `·` before `🟢` stacks with the `·` after context `%` on line 1
+Key alignment rules:
+- **Regular** line 2: `%2d` for 5h, `%2d` for 7d — `🟢` lands under `🤖`
+- **Heavy** line 2: `%2d` for 5h, `%3d` for 7d, `%4s` for cost — `·` before `🟢` stacks with `·` after context `%`
 
 Env vars: `CLAUDE_PULSE_DENSITY` (minimal/regular/heavy), `CLAUDE_PULSE_HIDE_COST` (set to hide `💰` in heavy mode — recommended for Max/Pro users)
 

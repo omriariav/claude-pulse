@@ -37,7 +37,7 @@ rm -rf ~/.claude/static/*.m4a
 Read `~/.claude/settings.json`, then Edit to remove:
 
 - `statusLine` key entirely
-- From `env` object: `RED_ALERT_CITIES`, `RED_ALERT_MODE`, `RED_ALERT_SOUND`, `RED_ALERT_SOUND_COOLDOWN`, `RED_ALERT_MOCK_INTERVAL`, `CLAUDE_PULSE_DENSITY`
+- From `env` object: `RED_ALERT_CITIES`, `RED_ALERT_MODE`, `RED_ALERT_SOUND`, `RED_ALERT_SOUND_COOLDOWN`, `RED_ALERT_SOUND_COOLDOWN_MISSILE`, `RED_ALERT_SOUND_COOLDOWN_PRE`, `RED_ALERT_MOCK_INTERVAL`, `RED_ALERT_DEBUG`, `CLAUDE_PULSE_DENSITY`, `CLAUDE_PULSE_HIDE_COST`
 - From `hooks.SessionStart`: remove any hook entry containing `com.claude-pulse.red-alert`
 
 Do NOT remove other env vars, hooks, or settings.

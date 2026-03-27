@@ -48,7 +48,7 @@ echo "⚡ ${G}5h: 5%${R}  7d: 2%  🟢 Alerts ON ${DM}(1)${R}"
 echo ""
 echo "${B}3) Heavy${R} ${DM}— full detail, wide terminals (160+ cols)${R}"
 echo "${G}🧠 [██████░░░░░░░░░░░░░░] 31%${R} · 🤖 Sonnet 4.6 (1M) · 💬 2503-work · 🌿 fix/alert-city-accumulation (#25) · 📁 ~/Code/claude-pulse"
-echo "⚡ ${G}5h: 5%${R} · 7d: 2% · 💰 \$0.42 · 🟢 Alerts daemon ON ${DM}(1)${R}"
+echo "⚡ ${G}5h: 5%${R} · 7d:  2% · 💰  \$12 · 🟢 Alerts daemon ON ${DM}(1)${R}"
 echo ""
 echo "${B}4) Auto${R} ${DM}— adapts to terminal width automatically [recommended]${R}"
 echo ""
@@ -108,14 +108,21 @@ Tell user: fuzzy matching works ("center" matches "Tel Aviv - City Center").
 
 ## 6. Apply Red Alert env vars
 
-Read then Edit `~/.claude/settings.json` `env` object — merge, don't overwrite:
+Read then Edit `~/.claude/settings.json` `env` object.
 
-| Choice | Env vars |
-|--------|----------|
+**First: remove stale Red Alert env vars** to avoid conflicts from previous config:
+Remove `RED_ALERT_CITIES`, `RED_ALERT_MODE`, `RED_ALERT_SOUND` from `env` if present.
+
+**Then set fresh values based on choice:**
+
+| Choice | Env vars to set |
+|--------|----------------|
 | Specific + sound | `"RED_ALERT_CITIES": "<cities>"` |
 | Specific, no sound | `"RED_ALERT_CITIES": "<cities>", "RED_ALERT_SOUND": "off"` |
 | All + sound | `"RED_ALERT_MODE": "all"` |
 | All, no sound | `"RED_ALERT_MODE": "all", "RED_ALERT_SOUND": "off"` |
+
+Do NOT remove other env vars (e.g., `CLAUDE_PULSE_DENSITY`).
 
 ## 7. Daemon (macOS, if Red Alert enabled)
 
@@ -125,7 +132,7 @@ pkill -9 -f red-alert-daemon 2>/dev/null || true
 rm -f ~/.local/state/claude-pulse/red_alert_daemon.pid ~/.local/state/claude-pulse/red_alert_last_sound ~/.local/state/claude-pulse/red_alert_state.json
 ```
 
-Edit plist `~/Library/LaunchAgents/com.claude-pulse.red-alert.plist` — add env vars to `EnvironmentVariables`, set `KeepAlive` and `RunAtLoad` to `<true/>`.
+If the plist `~/Library/LaunchAgents/com.claude-pulse.red-alert.plist` does not exist, create it first by running `./install.sh` from the repo directory (it generates the plist with the correct structure). Then Edit the plist — add env vars to `EnvironmentVariables`, set `KeepAlive` and `RunAtLoad` to `<true/>`.
 
 ```bash
 launchctl list | grep -q com.claude-pulse.red-alert || launchctl load ~/Library/LaunchAgents/com.claude-pulse.red-alert.plist
