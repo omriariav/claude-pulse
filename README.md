@@ -1,6 +1,6 @@
 # claude-pulse
 
-> Real-time token usage monitoring for Claude Code status line | **v2.5.1**
+> Real-time token usage monitoring for Claude Code status line | **v2.5.2**
 
 **claude-pulse** displays your current Claude Code token usage directly in your status line, helping you stay aware of context consumption without running `/context` manually.
 
@@ -275,6 +275,7 @@ You can! But claude-pulse offers:
 
 | Version | Highlights |
 |---------|-----------|
+| **v2.5.2** | Pre-alert banner persists after main alert expires; SessionStart hook no longer kills running daemon |
 | **v2.5.1** | Fix Sonnet 4.6 model detection (was showing "Sonnet 4.5") |
 | **v2.5.0** | Native `session_name` support — zero-latency conversation names, no API calls needed |
 | **v2.4.2** | Alert city merging across waves, per-sound-class cooldown, consolidated jq calls |

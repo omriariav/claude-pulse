@@ -1,5 +1,29 @@
 # Release Notes
 
+## v2.5.2 - Pre-Alert Persistence + Hook Fix
+
+**Released:** March 27, 2026
+
+### What's Fixed
+
+- **Pre-alert banner persists after main alert expires** — Pre-alert was dropped from state when the main alert transitioned to all-clear, event-ended, or empty, even if the pre-alert's own TTL hadn't expired. Now carried forward as long as its `display_until_unix` is still active, independent of the main alert's lifecycle.
+- **SessionStart hook no longer kills the running daemon** — Removed `-k` from `launchctl kickstart` so opening a new Claude Code session no longer restarts the daemon. Alert state is preserved across sessions.
+
+### Upgrade
+
+```bash
+cd claude-pulse
+git pull
+cp red-alert-daemon.sh ~/.claude/red-alert-daemon.sh
+```
+
+Update the SessionStart hook in `~/.claude/settings.json` — remove the `-k` flag from `kickstart`:
+```bash
+launchctl list | grep -q com.claude-pulse.red-alert || launchctl load ~/Library/LaunchAgents/com.claude-pulse.red-alert.plist; launchctl kickstart "gui/$(id -u)/com.claude-pulse.red-alert" >/dev/null 2>&1; true
+```
+
+---
+
 ## v2.5.1 - Fix Sonnet 4.6 Model Detection
 
 **Released:** March 27, 2026
