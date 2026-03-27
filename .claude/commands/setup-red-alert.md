@@ -141,7 +141,7 @@ Then load and start:
 
 ```bash
 launchctl list | grep -q com.claude-pulse.red-alert || launchctl load ~/Library/LaunchAgents/com.claude-pulse.red-alert.plist
-launchctl kickstart -k "gui/$(id -u)/com.claude-pulse.red-alert" >/dev/null 2>&1 || true
+launchctl kickstart "gui/$(id -u)/com.claude-pulse.red-alert" >/dev/null 2>&1 || true
 ```
 
 Verify it's running:
@@ -162,7 +162,7 @@ Add a `SessionStart` hook to `~/.claude/settings.json` so the daemon starts auto
         "hooks": [
           {
             "type": "command",
-            "command": "launchctl list | grep -q com.claude-pulse.red-alert || launchctl load ~/Library/LaunchAgents/com.claude-pulse.red-alert.plist; launchctl kickstart -k \"gui/$(id -u)/com.claude-pulse.red-alert\" >/dev/null 2>&1; true",
+            "command": "launchctl list | grep -q com.claude-pulse.red-alert || launchctl load ~/Library/LaunchAgents/com.claude-pulse.red-alert.plist; launchctl kickstart \"gui/$(id -u)/com.claude-pulse.red-alert\" >/dev/null 2>&1; true",
             "timeout": 5
           }
         ]
