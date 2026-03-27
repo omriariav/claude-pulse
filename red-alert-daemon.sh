@@ -59,6 +59,14 @@ build_state() {
         prev_first=$(jq -r '.first_seen_unix // 0' "$STATE_FILE" 2>/dev/null)
         if [[ "$prev_id" == "$id" ]] && [[ "$prev_first" != "0" ]] && [[ "$prev_first" != "null" ]]; then
             first_seen="$prev_first"
+            # Preserve accumulated cities from prior merges (re-poll of same ID must not lose them)
+            local _prev_du _now_main
+            _prev_du=$(jq -r '.display_until_unix // 0' "$STATE_FILE" 2>/dev/null)
+            _now_main=$(date +%s)
+            if [[ "$_prev_du" != "0" ]] && (( _prev_du >= _now_main )); then
+                cities=$(jq -s '.[0] + .[1] | unique' <(echo "$cities") <(jq '.cities // []' "$STATE_FILE") 2>/dev/null)
+                cities_en=$(jq -s '.[0] + .[1] | unique' <(echo "$cities_en") <(jq '.cities_en // []' "$STATE_FILE") 2>/dev/null)
+            fi
         fi
     fi
     # Display until: max(last_seen + 60, first_seen + 180) for active alerts
@@ -107,10 +115,18 @@ build_state() {
             local existing_pre_id
             existing_pre_id=$(jq -r '.pre_alert.alert_id // ""' "$STATE_FILE" 2>/dev/null)
             if [[ "$existing_pre_id" == "$id" ]]; then
-                local existing_pre_first
+                local existing_pre_first existing_pre_du_early
                 existing_pre_first=$(jq -r '.pre_alert.first_seen_unix // 0' "$STATE_FILE" 2>/dev/null)
+                existing_pre_du_early=$(jq -r '.pre_alert.display_until_unix // 0' "$STATE_FILE" 2>/dev/null)
                 if [[ "$existing_pre_first" != "0" ]] && [[ "$existing_pre_first" != "null" ]]; then
                     pre_first_seen="$existing_pre_first"
+                fi
+                # Preserve accumulated cities from prior merges (re-poll of same ID must not lose them)
+                local _now_early
+                _now_early=$(date +%s)
+                if [[ "$existing_pre_du_early" != "0" ]] && (( existing_pre_du_early >= _now_early )); then
+                    cities=$(jq -s '.[0] + .[1] | unique' <(echo "$cities") <(jq -c '.pre_alert.cities // []' "$STATE_FILE") 2>/dev/null)
+                    cities_en=$(jq -s '.[0] + .[1] | unique' <(echo "$cities_en") <(jq -c '.pre_alert.cities_en // []' "$STATE_FILE") 2>/dev/null)
                 fi
             fi
             local pre_display_until
