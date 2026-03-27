@@ -42,6 +42,14 @@ assert_contains "$out_200k" "(200k)" "context limit: 200k format"
 
 out_1m=$(echo '{"cwd":"/test","model":{"id":"claude-opus-4-6"},"context_window":{"total_input_tokens":50000,"total_output_tokens":5000,"context_window_size":1000000}}' | "$PULSE" 2>/dev/null)
 assert_contains "$out_1m" "(1M)" "context limit: 1M format"
+# regression: Opus 4.6 (1M) must never be confused with Sonnet
+assert_contains "$out_1m" "Opus 4.6" "Opus 4.6 (1M) shows Opus not Sonnet"
+assert_not_contains "$out_1m" "Sonnet" "Opus 4.6 (1M) does not show Sonnet"
+
+# regression: Sonnet 4.6 must not fall back to Sonnet 4.5
+out_sonnet46=$(echo '{"cwd":"/test","model":{"id":"claude-sonnet-4-6"},"context_window":{"total_input_tokens":50000,"total_output_tokens":5000,"context_window_size":1000000}}' | "$PULSE" 2>/dev/null)
+assert_contains "$out_sonnet46" "Sonnet 4.6" "Sonnet 4.6 (1M) shows 4.6 not 4.5"
+assert_not_contains "$out_sonnet46" "Sonnet 4.5" "Sonnet 4.6 (1M) does not show Sonnet 4.5"
 
 # test_model_not_confused: Opus 4.6 (1M) must never show Sonnet (regression: model switch lag)
 out_opus_1m=$(echo '{"cwd":"/test","model":{"id":"claude-opus-4-6"},"context_window":{"total_input_tokens":50000,"total_output_tokens":5000,"context_window_size":1000000}}' | "$PULSE" 2>/dev/null)
