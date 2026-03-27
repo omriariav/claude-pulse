@@ -21,6 +21,8 @@ assert_contains "$output" "/test" "basic output has cwd"
 for pair in \
     "claude-opus-4-6-20250929:Opus 4.6" \
     "claude-opus-4-20250512:Opus 4.5" \
+    "claude-sonnet-4-6-20250929:Sonnet 4.6" \
+    "claude-sonnet-4-5-20250514:Sonnet 4.5" \
     "claude-sonnet-4-20250514:Sonnet 4.5" \
     "claude-haiku-3-5-20241022:Haiku 3.5" \
     "claude-sonnet-3-5-20240620:Sonnet 3.5" \

@@ -50,7 +50,7 @@ case "$model_id" in
         context_limit=200000
         ;;
     claude-sonnet-4*)
-        model_name="Sonnet 4.x"
+        model_name="Sonnet 4.5"
         context_limit=200000
         ;;
     claude-haiku-3-5*|claude-3-5-haiku*)
