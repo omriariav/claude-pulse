@@ -8,18 +8,20 @@
 # Read JSON input from stdin
 input=$(cat)
 
-# ANSI color codes (single source of truth)
-C_RED="\033[31m"
-C_GREEN="\033[32m"
-C_YELLOW="\033[33m"
-C_GRAY="\033[90m"
-C_RESET="\033[0m"
-C_RED_BG="\033[41;97m"
-C_GREEN_BG="\033[42;97m"
-C_YELLOW_BG="\033[43;30m"
+# ANSI RGB color palette — $'...' literals for proper \033 interpretation
+C_RED=$'\033[38;2;255;85;85m'
+C_GREEN=$'\033[38;2;80;250;123m'
+C_YELLOW=$'\033[38;2;255;215;0m'
+C_GRAY=$'\033[38;2;128;128;128m'
+C_DIM=$'\033[38;2;128;128;128m'
+C_RESET=$'\033[0m'
+C_RED_BG=$'\033[41;97m'
+C_GREEN_BG=$'\033[42;97m'
+C_YELLOW_BG=$'\033[43;30m'
+SEP="${C_DIM}│${C_RESET}"
 
 # Extract values from JSON (single jq call, Unit Separator delimiter)
-IFS=$'\x1f' read -r cwd transcript_path session_id model_id rate_5h rate_7d session_name < <(
+IFS=$'\x1f' read -r cwd transcript_path session_id model_id rate_5h rate_7d session_name cost_usd used_pct display_name < <(
     echo "$input" | jq -j '[
         .cwd // "",
         .transcript_path // "",
@@ -27,50 +29,72 @@ IFS=$'\x1f' read -r cwd transcript_path session_id model_id rate_5h rate_7d sess
         .model.id // "claude-sonnet-4-5-20250929",
         (.rate_limits.five_hour.used_percentage // "" | tostring),
         (.rate_limits.seven_day.used_percentage // "" | tostring),
-        .session_name // ""
+        .session_name // "",
+        (.cost.total_cost_usd // "" | tostring),
+        (.context_window.used_percentage // "" | tostring),
+        .model.display_name // ""
     ] | join("\u001f")' 2>/dev/null
 )
+
+# Density tier: minimal / regular / heavy
+# Override with CLAUDE_PULSE_DENSITY env var, otherwise auto-detect from terminal width
+term_width=${COLUMNS:-$(tput cols 2>/dev/null || echo 120)}
+if [[ -n "$CLAUDE_PULSE_DENSITY" ]]; then
+    density="$CLAUDE_PULSE_DENSITY"
+elif (( term_width < 100 )); then
+    density="minimal"
+elif (( term_width >= 160 )); then
+    density="heavy"
+else
+    density="regular"
+fi
+
+# CWD shortening by density
+case "$density" in
+    minimal|regular) short_cwd="$(basename "$cwd")" ;;
+    heavy)           short_cwd="${cwd/#$HOME/~}" ;;
+esac
 
 # Convert model ID to friendly name
 case "$model_id" in
     claude-opus-4-6*)
-        model_name="Opus 4.6"
+        model_name="Opus 4.6"; model_short="Op4.6"
         context_limit=200000
         ;;
     claude-opus-4*)
-        model_name="Opus 4.5"
+        model_name="Opus 4.5"; model_short="Op4.5"
         context_limit=200000
         ;;
     claude-sonnet-4-6*)
-        model_name="Sonnet 4.6"
+        model_name="Sonnet 4.6"; model_short="Son4.6"
         context_limit=200000
         ;;
     claude-sonnet-4-5*)
-        model_name="Sonnet 4.5"
+        model_name="Sonnet 4.5"; model_short="Son4.5"
         context_limit=200000
         ;;
     claude-sonnet-4*)
-        model_name="Sonnet 4.5"
+        model_name="Sonnet 4.5"; model_short="Son4.5"
         context_limit=200000
         ;;
     claude-haiku-3-5*|claude-3-5-haiku*)
-        model_name="Haiku 3.5"
+        model_name="Haiku 3.5"; model_short="Hai3.5"
         context_limit=200000
         ;;
     claude-sonnet-3-5*|claude-3-5-sonnet*)
-        model_name="Sonnet 3.5"
+        model_name="Sonnet 3.5"; model_short="Son3.5"
         context_limit=200000
         ;;
     claude-opus-3*|claude-3-opus*)
-        model_name="Opus 3"
+        model_name="Opus 3"; model_short="Op3"
         context_limit=200000
         ;;
     claude-sonnet-3-7*|claude-3-7-sonnet*)
-        model_name="Sonnet 3.7"
+        model_name="Sonnet 3.7"; model_short="Son3.7"
         context_limit=200000
         ;;
     *)
-        model_name="Claude"
+        model_name="Claude"; model_short="Claude"
         context_limit=200000
         ;;
 esac
@@ -130,10 +154,10 @@ fi
 # If still no data, check if transcript exists but has no usage yet
 if [[ -z "$input_tokens" ]] || [[ "$input_tokens" == "null" ]]; then
     if [[ ! -f "$transcript_path" ]]; then
-        printf "🧠 Transcript not found 📁 ${cwd}"
+        printf "🧠 Transcript not found 📁 ${short_cwd}"
         exit 0
     fi
-    printf "🧠 No token usage yet 📁 ${cwd}"
+    printf "🧠 No token usage yet 📁 ${short_cwd}"
     exit 0
 fi
 
@@ -144,17 +168,25 @@ percent=$(awk "BEGIN {printf \"%.0f\", ($input_tokens/$context_limit)*100}")
 display_percent=$percent
 if (( display_percent > 100 )); then display_percent=100; fi
 
-# Progress bar (20-char, shows context consumed)
-bar_width=20
-bar_filled=$(( (display_percent * bar_width + 50) / 100 ))
-if (( bar_filled > bar_width )); then bar_filled=$bar_width; fi
-if (( bar_filled < 0 )); then bar_filled=0; fi
-bar_empty=$(( bar_width - bar_filled ))
+# Progress bar (density-aware: 0/10/20 chars)
+case "$density" in
+    minimal) bar_width=0 ;;
+    regular) bar_width=10 ;;
+    heavy)   bar_width=20 ;;
+esac
 
-bar="["
-for ((i=0; i<bar_filled; i++)); do bar+="█"; done
-for ((i=0; i<bar_empty; i++)); do bar+="░"; done
-bar+="]"
+bar=""
+if (( bar_width > 0 )); then
+    bar_filled=$(( (display_percent * bar_width + 50) / 100 ))
+    if (( bar_filled > bar_width )); then bar_filled=$bar_width; fi
+    if (( bar_filled < 0 )); then bar_filled=0; fi
+    bar_empty=$(( bar_width - bar_filled ))
+
+    if [[ "$density" == "heavy" ]]; then bar="["; fi
+    for ((i=0; i<bar_filled; i++)); do bar+="█"; done
+    for ((i=0; i<bar_empty; i++)); do bar+="░"; done
+    if [[ "$density" == "heavy" ]]; then bar+="]"; fi
+fi
 
 # Color based on usage (green=low, yellow=moderate, red=high)
 if (( percent >= 80 )); then
@@ -275,15 +307,24 @@ elif [[ -n "$transcript_path" ]] && [[ "$transcript_path" != "null" ]] && [[ -n 
     fi
 fi
 
-# Truncate long conversation names
-if [[ -n "$conv_name" ]] && (( ${#conv_name} > 20 )); then
-    conv_name="${conv_name:0:18}.."
+# Truncate long conversation names (density-aware)
+case "$density" in
+    minimal) max_name=12 ;;
+    regular) max_name=15 ;;
+    heavy)   max_name=20 ;;
+esac
+if [[ -n "$conv_name" ]] && (( ${#conv_name} > max_name )); then
+    conv_name="${conv_name:0:$((max_name - 2))}.."
 fi
 
-# Build name segment
+# Build name segment (density-aware)
 name_segment=""
 if [[ -n "$conv_name" ]]; then
-    name_segment=" · 💬 ${conv_name}"
+    case "$density" in
+        minimal) name_segment=" ${SEP} ${conv_name}" ;;
+        regular) name_segment="  💬 ${conv_name}" ;;
+        heavy)   name_segment=" · 💬 ${conv_name}" ;;
+    esac
 fi
 
 # Git branch detection
@@ -294,16 +335,14 @@ fi
 
 # Git branch + PR number segment
 pr_segment=""
+pr_number=""
 if [[ -n "$branch" ]]; then
-    pr_segment=" · 🌿 ${branch}"
-
     # PR lookup with caching (only if gh is available and not on main/master)
     if command -v gh &>/dev/null && [[ "$branch" != "main" ]] && [[ "$branch" != "master" ]]; then
         cwd_hash=$(printf '%s' "$cwd" | md5 2>/dev/null || printf '%s' "$cwd" | md5sum 2>/dev/null | cut -d' ' -f1)
         # Sanitize branch name for safe cache filename (feat/bar -> feat-bar)
         safe_branch=$(printf '%s' "$branch" | tr '/' '-')
         pr_cache_file="${cache_dir}/pr-${cwd_hash}-${safe_branch}"
-        pr_number=""
 
         # Check cache (valid for 10 min)
         if [[ -f "$pr_cache_file" ]]; then
@@ -327,11 +366,37 @@ if [[ -n "$branch" ]]; then
             printf '%s' "${pr_number:-none}" > "$tmp_file"
             mv -f "$tmp_file" "$pr_cache_file"
         fi
-
-        if [[ -n "$pr_number" ]] && [[ "$pr_number" != "none" ]]; then
-            pr_segment=" · 🌿 ${branch} (#${pr_number})"
-        fi
+        [[ "$pr_number" == "none" ]] && pr_number=""
     fi
+
+    # Format branch/PR segment by density
+    case "$density" in
+        minimal)
+            if [[ -n "$pr_number" ]]; then
+                pr_segment=" ${SEP} #${pr_number} ${short_cwd}"
+            else
+                pr_segment=" ${SEP} ${branch:0:10} ${short_cwd}"
+            fi
+            ;;
+        regular)
+            local_branch="$branch"
+            if (( ${#local_branch} > 20 )); then
+                local_branch="…${local_branch: -19}"
+            fi
+            if [[ -n "$pr_number" ]]; then
+                pr_segment="  🌿 ${local_branch} (#${pr_number})"
+            else
+                pr_segment="  🌿 ${local_branch}"
+            fi
+            ;;
+        heavy)
+            if [[ -n "$pr_number" ]]; then
+                pr_segment=" · 🌿 ${branch} (#${pr_number})"
+            else
+                pr_segment=" · 🌿 ${branch}"
+            fi
+            ;;
+    esac
 fi
 
 # Evaluate alert display state: "active", "recent", or "expired"
@@ -584,21 +649,25 @@ if [[ -n "$RED_ALERT_CITIES" ]] || [[ -n "$RED_ALERT_MODE" ]]; then
     fi
 fi
 
-# Build rate limit segment (color-coded like context bar)
-rate_segment=""
+# Parse rate limit values and determine colors
+rate_5h_int=0
+rate_7d_int=0
+rate_5h_color="$C_GREEN"
+rate_7d_color=""
 if [[ -n "$rate_5h" ]]; then
     rate_5h_int=${rate_5h%.*}
     if (( rate_5h_int >= 80 )); then
         rate_5h_color="$C_RED"
     elif (( rate_5h_int >= 50 )); then
         rate_5h_color="$C_YELLOW"
-    else
-        rate_5h_color="$C_GREEN"
     fi
-    rate_segment="⚡ ${rate_5h_color}5h: ${rate_5h_int}%%${reset}"
-    if [[ -n "$rate_7d" ]]; then
-        rate_7d_int=${rate_7d%.*}
-        rate_segment="${rate_segment} · 7d: ${rate_7d_int}%%"
+fi
+if [[ -n "$rate_7d" ]]; then
+    rate_7d_int=${rate_7d%.*}
+    if (( rate_7d_int >= 80 )); then
+        rate_7d_color="$C_RED"
+    elif (( rate_7d_int >= 50 )); then
+        rate_7d_color="$C_YELLOW"
     fi
 fi
 
@@ -628,32 +697,73 @@ if [[ -n "$RED_ALERT_CITIES" ]] || [[ -n "$RED_ALERT_MODE" ]]; then
     fi
 fi
 
-# Build 2nd line from rate limits + alert status
-line2=""
+# Build alert part (active alert or daemon indicator) — used by all densities
+alert_part=""
 if [[ -n "$alert_segment" ]]; then
-    # Active alert: prepend rate limits compactly
-    if [[ -n "$rate_segment" ]]; then
-        # Compact rate format for alert line
-        compact_rate="⚡${rate_5h_color}5h:${rate_5h_int}%%${reset}"
-        if [[ -n "$rate_7d" ]]; then
-            compact_rate="${compact_rate} 7d:${rate_7d_int}%%"
-        fi
-        # Replace the \n prefix on alert_segment and prepend rate
-        alert_no_newline="${alert_segment#\\n}"
-        line2="\n${compact_rate} · ${alert_no_newline}"
-    else
-        line2="${alert_segment}"
-    fi
-elif [[ -n "$rate_segment" ]] && [[ -n "$alert_indicator" ]]; then
-    # Rate limits + alert indicator
-    line2="\n${rate_segment} · ${alert_indicator}"
-elif [[ -n "$rate_segment" ]]; then
-    # Rate limits only (no red alert configured)
-    line2="\n${rate_segment}"
+    alert_no_newline="${alert_segment#\\n}"
+    alert_part="${alert_no_newline}"
 elif [[ -n "$alert_indicator" ]]; then
-    # Alert indicator only (no rate limit data)
-    line2="\n${alert_indicator}"
+    alert_part="${alert_indicator}"
 fi
 
-# Output format: "🧠 [████░░] 72% · 🤖 Model · 💬 Topic · 🌿 branch 📁 /path"
-printf "${color}🧠 ${bar} ${percent}%%${reset} · 🤖 ${model_name} (${context_label})${name_segment}${pr_segment} 📁 ${cwd}${line2}"
+# Build cost part (heavy only)
+cost_part=""
+if [[ "$density" == "heavy" ]] && [[ -n "$cost_usd" ]] && [[ "$cost_usd" != "" ]] && [[ "$cost_usd" != "null" ]]; then
+    cost_part=" · 💰 \$${cost_usd}"
+fi
+
+# Output — density-aware formatting
+case "$density" in
+    minimal)
+        # Single line: │ separators, rates + alerts inline
+        printf "${color}🧠 ${percent}%% ${model_short}(${context_label})${reset}"
+        printf "${name_segment}"
+        if [[ -n "$branch" ]]; then
+            printf "${pr_segment}"
+        else
+            printf " ${SEP} ${short_cwd}"
+        fi
+        if [[ -n "$rate_5h" ]]; then
+            printf " ${SEP} ⚡${rate_5h_color}5h:%2d%%${reset}" "$rate_5h_int"
+            if [[ -n "$rate_7d" ]]; then
+                printf " 7d:%2d%%" "$rate_7d_int"
+            fi
+        fi
+        if [[ -n "$alert_part" ]]; then
+            printf " ${SEP} ${alert_part}"
+        fi
+        ;;
+    regular)
+        # Line 1: emoji-separated segments (double-space between)
+        printf "${color}🧠 ${bar} ${percent}%%${reset}  🤖 ${model_name} (${context_label})${name_segment}${pr_segment}  📁 ${short_cwd}"
+        # Line 2: rates (always shown) + alerts, %2d padding for alignment
+        if [[ -n "$rate_5h" ]]; then
+            printf "\n⚡ ${rate_5h_color}5h:%2d%%${reset}" "$rate_5h_int"
+            if [[ -n "$rate_7d" ]]; then
+                printf "  ${rate_7d_color}7d:%2d%%${reset}" "$rate_7d_int"
+            fi
+            if [[ -n "$alert_part" ]]; then
+                printf "  ${alert_part}"
+            fi
+        elif [[ -n "$alert_part" ]]; then
+            printf "\n${alert_part}"
+        fi
+        ;;
+    heavy)
+        # Line 1: · dot separators, full detail
+        printf "${color}🧠 ${bar} ${percent}%%${reset} · 🤖 ${model_name} (${context_label})${name_segment}${pr_segment} · 📁 ${short_cwd}"
+        # Line 2: dots, includes cost
+        if [[ -n "$rate_5h" ]]; then
+            printf "\n⚡ ${rate_5h_color}5h:%2d%%${reset}" "$rate_5h_int"
+            if [[ -n "$rate_7d" ]]; then
+                printf " · ${rate_7d_color}7d:%2d%%${reset}" "$rate_7d_int"
+            fi
+            printf "${cost_part}"
+            if [[ -n "$alert_part" ]]; then
+                printf " · ${alert_part}"
+            fi
+        elif [[ -n "$alert_part" ]]; then
+            printf "\n${cost_part:+${cost_part} · }${alert_part}"
+        fi
+        ;;
+esac

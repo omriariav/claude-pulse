@@ -5,6 +5,9 @@ TESTS_DIR="$(cd "$(dirname "$0")" && pwd)"
 source "$TESTS_DIR/helpers.sh"
 setup
 
+# Force heavy density for tests (matches old full-detail format)
+export CLAUDE_PULSE_DENSITY=heavy
+
 PULSE="$TESTS_DIR/../claude-pulse"
 
 echo "Testing statusline basics..."
@@ -51,18 +54,18 @@ out_sonnet46=$(echo '{"cwd":"/test","model":{"id":"claude-sonnet-4-6"},"context_
 assert_contains "$out_sonnet46" "Sonnet 4.6" "Sonnet 4.6 (1M) shows 4.6 not 4.5"
 assert_not_contains "$out_sonnet46" "Sonnet 4.5" "Sonnet 4.6 (1M) does not show Sonnet 4.5"
 
-# test_color_thresholds: check ANSI codes based on percentage
-# 25% = green (32m)
+# test_color_thresholds: check ANSI RGB codes based on percentage
+# 25% = green (RGB 80;250;123)
 out_green=$(echo '{"cwd":"/test","model":{"id":"claude-opus-4-6"},"context_window":{"total_input_tokens":50000,"total_output_tokens":0,"context_window_size":200000}}' | "$PULSE" 2>/dev/null)
-assert_contains "$out_green" "[32m" "color: green at 25%"
+assert_contains "$out_green" "38;2;80;250;123m" "color: green at 25%"
 
-# 60% = yellow (33m)
+# 60% = yellow (RGB 255;215;0)
 out_yellow=$(echo '{"cwd":"/test","model":{"id":"claude-opus-4-6"},"context_window":{"total_input_tokens":120000,"total_output_tokens":0,"context_window_size":200000}}' | "$PULSE" 2>/dev/null)
-assert_contains "$out_yellow" "[33m" "color: yellow at 60%"
+assert_contains "$out_yellow" "38;2;255;215;0m" "color: yellow at 60%"
 
-# 90% = red (31m)
+# 90% = red (RGB 255;85;85)
 out_red=$(echo '{"cwd":"/test","model":{"id":"claude-opus-4-6"},"context_window":{"total_input_tokens":180000,"total_output_tokens":0,"context_window_size":200000}}' | "$PULSE" 2>/dev/null)
-assert_contains "$out_red" "[31m" "color: red at 90%"
+assert_contains "$out_red" "38;2;255;85;85m" "color: red at 90%"
 
 # test_no_transcript: missing transcript shows appropriate message
 out_no_transcript=$(echo '{"cwd":"/test","model":{"id":"claude-opus-4-6"}}' | "$PULSE" 2>/dev/null)
@@ -76,7 +79,7 @@ echo "Testing conversation name (session_name)..."
 out_sn=$(run_pulse '{"session_name":"my-cool-chat"}')
 assert_contains "$out_sn" "💬 my-cool-chat" "session_name displayed"
 
-# test_session_name_truncation: long names get truncated to 18 chars + ".."
+# test_session_name_truncation: long names get truncated (heavy: 18 chars + "..")
 out_long=$(run_pulse '{"session_name":"this-is-a-very-long-conversation-name"}')
 assert_contains "$out_long" "💬 this-is-a-very-lon.." "long session_name truncated"
 assert_not_contains "$out_long" "conversation-name" "truncation cuts the tail"
@@ -97,20 +100,20 @@ assert_not_contains "$out_missing" "💬" "missing session_name hides chat icon"
 echo ""
 echo "Testing rate limits..."
 
-# test_rate_limits_displayed
+# test_rate_limits_displayed (heavy: %2d format, double digits have no space)
 out_rates=$(run_pulse '{"rate_limits":{"five_hour":{"used_percentage":53},"seven_day":{"used_percentage":66}}}')
-assert_contains "$out_rates" "5h: 53%" "5h rate limit shown"
-assert_contains "$out_rates" "7d: 66%" "7d rate limit shown"
+assert_contains "$out_rates" "5h:53%" "5h rate limit shown"
+assert_contains "$out_rates" "7d:66%" "7d rate limit shown"
 
-# test_rate_limit_colors: green <50, yellow 50-79, red 80+
+# test_rate_limit_colors: green <50, yellow 50-79, red 80+ (RGB codes)
 out_rate_green=$(run_pulse '{"rate_limits":{"five_hour":{"used_percentage":20}}}')
-assert_contains "$out_rate_green" "[32m5h" "rate green at 20%"
+assert_contains "$out_rate_green" "80;250;123m" "rate green at 20%"
 
 out_rate_yellow=$(run_pulse '{"rate_limits":{"five_hour":{"used_percentage":55}}}')
-assert_contains "$out_rate_yellow" "[33m5h" "rate yellow at 55%"
+assert_contains "$out_rate_yellow" "255;215;0m" "rate yellow at 55%"
 
 out_rate_red=$(run_pulse '{"rate_limits":{"five_hour":{"used_percentage":90}}}')
-assert_contains "$out_rate_red" "[31m5h" "rate red at 90%"
+assert_contains "$out_rate_red" "255;85;85m" "rate red at 90%"
 
 # --- Progress bar tests ---
 echo ""
