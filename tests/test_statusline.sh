@@ -103,7 +103,7 @@ echo "Testing rate limits..."
 # test_rate_limits_displayed (heavy: %2d format, double digits have no space)
 out_rates=$(run_pulse '{"rate_limits":{"five_hour":{"used_percentage":53},"seven_day":{"used_percentage":66}}}')
 assert_contains "$out_rates" "5h:53%" "5h rate limit shown"
-assert_contains "$out_rates" "7d:66%" "7d rate limit shown"
+assert_contains "$out_rates" "7d: 66%" "7d rate limit shown"
 
 # test_rate_limit_colors: green <50, yellow 50-79, red 80+ (RGB codes)
 out_rate_green=$(run_pulse '{"rate_limits":{"five_hour":{"used_percentage":20}}}')
