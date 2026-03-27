@@ -64,21 +64,32 @@ Apply: Read then Edit `~/.claude/settings.json` `env` object:
 
 Create `env` object if it doesn't exist.
 
-## 4. Red Alert
+## 4. Session cost display (heavy mode only)
+
+Only ask this if user picked **Heavy** density (or Auto). Skip for Minimal/Regular.
+
+`AskUserQuestion`: "Show session cost (💰) in the statusline? Most useful for API/pay-per-use plans."
+- Options: "Yes - show cost", "No - I'm on Max/Pro (recommended)"
+
+Apply: Read then Edit `~/.claude/settings.json` `env` object:
+- **Yes:** Remove `CLAUDE_PULSE_HIDE_COST` if present
+- **No:** Set `"CLAUDE_PULSE_HIDE_COST": "1"`
+
+## 5. Red Alert
 
 `AskUserQuestion`: "Enable Red Alert (Pikud HaOref) rocket alert notifications?"
 - Options: "Yes - specific cities", "Yes - all alerts", "No - skip"
 
-**"No - skip"** → jump to Step 7.
-**"Yes - all alerts"** → skip to 4c.
+**"No - skip"** → jump to Step 8.
+**"Yes - all alerts"** → skip to 5c.
 
-### 4a. Cities
+### 5a. Cities
 
 `AskUserQuestion`: "Which cities?"
 - Options: "Tel Aviv", "Jerusalem", "Haifa", "Beer Sheva"
 - multiSelect: true, user can type custom via "Other" (comma-separated)
 
-### 4b. Zones
+### 5b. Zones
 
 For each city, check sub-zones:
 ```bash
@@ -90,12 +101,12 @@ If zones exist, show numbered list in text, then `AskUserQuestion`:
 
 Tell user: fuzzy matching works ("center" matches "Tel Aviv - City Center").
 
-### 4c. Sound
+### 5c. Sound
 
 `AskUserQuestion`: "Alert sound?"
 - Options: "Yes (recommended)", "No - visual only"
 
-## 5. Apply Red Alert env vars
+## 6. Apply Red Alert env vars
 
 Read then Edit `~/.claude/settings.json` `env` object — merge, don't overwrite:
 
@@ -106,7 +117,7 @@ Read then Edit `~/.claude/settings.json` `env` object — merge, don't overwrite
 | All + sound | `"RED_ALERT_MODE": "all"` |
 | All, no sound | `"RED_ALERT_MODE": "all", "RED_ALERT_SOUND": "off"` |
 
-## 6. Daemon (macOS, if Red Alert enabled)
+## 7. Daemon (macOS, if Red Alert enabled)
 
 ```bash
 launchctl unload ~/Library/LaunchAgents/com.claude-pulse.red-alert.plist 2>/dev/null || true
@@ -127,7 +138,7 @@ Add SessionStart hook — Read then Edit `~/.claude/settings.json`, merge into `
 {"hooks":{"SessionStart":[{"hooks":[{"type":"command","command":"launchctl list | grep -q com.claude-pulse.red-alert || launchctl load ~/Library/LaunchAgents/com.claude-pulse.red-alert.plist; launchctl kickstart \"gui/$(id -u)/com.claude-pulse.red-alert\" >/dev/null 2>&1; true","timeout":5}]}]}}
 ```
 
-## 7. Summary
+## 8. Summary
 
 ```
 claude-pulse setup complete!
