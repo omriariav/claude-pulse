@@ -20,8 +20,10 @@ assert_contains "$output" "/test" "basic output has cwd"
 # test_model_detection: each model ID maps to correct name
 for pair in \
     "claude-opus-4-6-20250929:Opus 4.6" \
+    "claude-opus-4-6:Opus 4.6" \
     "claude-opus-4-20250512:Opus 4.5" \
     "claude-sonnet-4-6-20250929:Sonnet 4.6" \
+    "claude-sonnet-4-6:Sonnet 4.6" \
     "claude-sonnet-4-5-20250514:Sonnet 4.5" \
     "claude-sonnet-4-20250514:Sonnet 4.5" \
     "claude-haiku-3-5-20241022:Haiku 3.5" \
@@ -40,6 +42,11 @@ assert_contains "$out_200k" "(200k)" "context limit: 200k format"
 
 out_1m=$(echo '{"cwd":"/test","model":{"id":"claude-opus-4-6"},"context_window":{"total_input_tokens":50000,"total_output_tokens":5000,"context_window_size":1000000}}' | "$PULSE" 2>/dev/null)
 assert_contains "$out_1m" "(1M)" "context limit: 1M format"
+
+# test_model_not_confused: Opus 4.6 (1M) must never show Sonnet (regression: model switch lag)
+out_opus_1m=$(echo '{"cwd":"/test","model":{"id":"claude-opus-4-6"},"context_window":{"total_input_tokens":50000,"total_output_tokens":5000,"context_window_size":1000000}}' | "$PULSE" 2>/dev/null)
+assert_contains "$out_opus_1m" "Opus 4.6" "Opus 4.6 (1M) shows Opus not Sonnet"
+assert_not_contains "$out_opus_1m" "Sonnet" "Opus 4.6 (1M) does not show Sonnet"
 
 # test_color_thresholds: check ANSI codes based on percentage
 # 25% = green (32m)
