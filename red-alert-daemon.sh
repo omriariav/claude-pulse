@@ -173,11 +173,14 @@ build_state() {
             # Missile/UAV overwriting pre-alert → preserve pre-alert
             pre_alert=$(jq -c '{alert_id,cat,title,cities,cities_en,last_seen_unix,first_seen_unix,display_until_unix}' "$STATE_FILE" 2>/dev/null)
         else
-            # Carry forward pre_alert only for active alerts (1/2/6), not all-clear or empty
-            if [[ "$cat" =~ ^(1|2|6)$ ]]; then
-                local existing_pre
-                existing_pre=$(jq -c '.pre_alert // null' "$STATE_FILE" 2>/dev/null)
-                if [[ -n "$existing_pre" ]] && [[ "$existing_pre" != "null" ]]; then
+            # Carry forward pre_alert if its own TTL is still active, regardless of main cat
+            local existing_pre
+            existing_pre=$(jq -c '.pre_alert // null' "$STATE_FILE" 2>/dev/null)
+            if [[ -n "$existing_pre" ]] && [[ "$existing_pre" != "null" ]]; then
+                local existing_pre_du now_cf
+                existing_pre_du=$(echo "$existing_pre" | jq -r '.display_until_unix // 0' 2>/dev/null)
+                now_cf=$(date +%s)
+                if [[ "$existing_pre_du" != "0" ]] && (( existing_pre_du > now_cf )); then
                     pre_alert="$existing_pre"
                 fi
             fi
