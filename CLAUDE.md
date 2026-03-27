@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-claude-pulse is a bash script that displays real-time token usage in the Claude Code status line. It shows usage as `🧠 72k/200k (36%) · 🤖 Opus 4.6 · 💬 "Topic Name"` with color-coded warnings (green/yellow/red based on percentage thresholds).
+claude-pulse is a bash script that displays real-time token usage in the Claude Code status line with adaptive density (minimal/regular/heavy) that auto-detects terminal width. Color-coded warnings (green/yellow/red based on percentage thresholds).
 
 ## Architecture
 
@@ -24,7 +24,7 @@ The project consists of:
 4. Calculates percentage and applies color coding (green <50%, yellow 50-79%, red 80%+)
 5. Converts model ID to friendly name (e.g., "Sonnet 4.5", "Opus 4.6", "Haiku 3.5")
 6. Looks up or infers a conversation name (via AI API or fallback)
-7. Outputs single line: token usage, model name, conversation name, and current working directory
+7. Outputs density-aware statusline (minimal: 1 line, regular/heavy: 2 lines)
 
 ### Key implementation details
 
@@ -34,6 +34,21 @@ The project consists of:
 - >100% is normal when context exceeds limit - Claude Code will auto-compact
 - Context limit defaults to 200k but is dynamically overridden by `context_window.context_window_size` from JSON input (handles 1M context for Opus 4.6 etc.)
 - Auto-detects `tac` vs `tail -r` for Linux/macOS compatibility
+- ANSI RGB color palette using `$'...'` bash literals (not double-quoted `"\033..."`)
+
+### Adaptive density (v3.0.0)
+
+Three tiers auto-detected from terminal width, overridable with `CLAUDE_PULSE_DENSITY` env var:
+
+- **Minimal** (< 100 cols): Single line, `│` separators, no bar, abbreviated model (`Son4.6`), rates + alerts inline
+- **Regular** (100–159 cols): Two lines, emoji dividers (double-space), 10-char bare bar, `%2d` rate padding for alignment
+- **Heavy** (≥ 160 cols): Two lines, ` · ` dot separators, 20-char bracketed bar, full branch, `~/` path, optional session cost
+
+Key alignment rules for regular mode:
+- Line 2 uses `%2d` for 5h rate and `%3d` for 7d rate so `🟢` lands under `🤖`
+- The `·` before `🟢` stacks with the `·` after context `%` on line 1
+
+Env vars: `CLAUDE_PULSE_DENSITY` (minimal/regular/heavy), `CLAUDE_PULSE_HIDE_COST` (set to hide `💰` in heavy mode — recommended for Max/Pro users)
 
 ### Model detection
 

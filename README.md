@@ -1,6 +1,6 @@
 # claude-pulse
 
-> Real-time token usage monitoring for Claude Code status line | **v2.5.2**
+> Real-time token usage monitoring for Claude Code status line | **v3.0.0**
 
 **claude-pulse** displays your current Claude Code token usage directly in your status line, helping you stay aware of context consumption without running `/context` manually.
 
@@ -8,32 +8,45 @@
 
 ## Features
 
-- ✅ **Visual context bar** - 20-char progress bar showing context consumed at a glance
+- ✅ **Adaptive density** - Three tiers (minimal/regular/heavy) auto-detected from terminal width
+- ✅ **Visual context bar** - Progress bar showing context consumed at a glance (10 or 20 chars)
 - ✅ **Accurate token counting** - Reads actual usage from Claude's API responses
 - ✅ **Model-aware limits** - Automatically detects context limits for different Claude models
-- ✅ **Model display** - Shows which Claude model you're using (e.g., "Sonnet 4.5", "Opus 4.5")
+- ✅ **Model display** - Shows which Claude model you're using (e.g., "Sonnet 4.5", "Opus 4.6")
 - ✅ **Conversation names** - AI-generated short names for easy session identification
 - ✅ **Git branch + PR** - Shows current branch and open PR number
-- ✅ **Multi-provider API** - Works with Anthropic, OpenAI, or Gemini API keys
-- ✅ **Compact display** - Single line showing usage, model, conversation, branch, and directory
-- ✅ **Color-coded warnings** - Green → Yellow → Red as context usage increases
+- ✅ **Session cost** - Shows cumulative API cost in heavy mode (optional, for pay-per-use plans)
+- ✅ **Rate limits** - 5h/7d usage rates always visible, color-coded
+- ✅ **Color-coded warnings** - Green → Yellow → Red as context usage increases (ANSI RGB)
+- ✅ **Interactive setup** - `/setup-statusline` walks you through density, cost, and Red Alert config
 - ✅ **Lightweight** - Pure bash/PowerShell script with minimal dependencies
 - ✅ **Inspired by [ccusage](https://github.com/ryoppippi/ccusage)** - Uses the same accurate parsing approach
 
 ## Demo
 
+**Heavy** (wide terminals):
 ```
-🧠 [██░░░░░░░░░░░░░░░░░░] 10% · 🤖 Opus 4.6 (1M) · 💬 Topic Name · 🌿 feat/bar 📁 ~/Code/project
-🧠 [██████████████░░░░░░] 70% · 🤖 Sonnet 4.5 (200k) · 💬 Statusline Setup · 🌿 main 📁 ~/Code/project
-🧠 [███████████████████░] 95% · 🤖 Opus 4.6 (200k) · 💬 Debug Auth Bug · 🌿 fix/auth (#42) 📁 ~/Code/project
+🧠 [██░░░░░░░░░░░░░░░░░░] 10% · 🤖 Opus 4.6 (1M) · 💬 Topic Name · 🌿 feat/bar (#42) · 📁 ~/Code/project
+⚡ 5h: 5% · 7d:  2% · 💰  $12 · 🟢 Alerts daemon ON
 ```
 
-The bar shows **context consumed** — a small green bar means plenty of room, a nearly-full red bar means you're running high.
+**Regular** (default):
+```
+🧠 ██░░░░░░░░ 10%  🤖 Opus 4.6 (1M)  💬 Topic Name  🌿 feat/bar (#42)  📁 project
+⚡ 5h: 5%  7d: 2%  🟢 Alerts ON
+```
+
+**Minimal** (narrow terminals):
+```
+🧠 10% Op4.6(1M) │ Topic Name │ #42 project │ ⚡5h: 5% 7d: 2% │ 🟢(1)
+```
 
 Color changes based on usage:
 - 🟢 **Green** (<50% used): Plenty of room
 - 🟡 **Yellow** (50-79% used): Moderate usage
 - 🔴 **Red** (≥80% used): Running high, consider compacting
+
+Density auto-detects from terminal width. Override with `CLAUDE_PULSE_DENSITY=minimal|regular|heavy`.
 
 ## Installation
 
@@ -174,19 +187,14 @@ After adding your API key (for fallback), restart your terminal or run `source ~
 Run the interactive setup command inside Claude Code:
 
 ```
-/setup-red-alert
+/setup-statusline
 ```
 
-This will:
-1. Install the daemon and sound files
-2. Download city/district translations (1492 locations)
-3. Ask which cities/zones to monitor
-4. Configure alert sounds
-5. Start the daemon via macOS launchd
+This walks you through everything: density selection, session cost toggle, city/zone selection, alert sounds, and daemon setup.
 
 #### Update
 
-Re-run `/setup-red-alert` to change cities, zones, or sound preferences. Or reinstall from the repo:
+Re-run `/setup-statusline` to change any settings. Or reinstall from the repo:
 
 ```bash
 cd claude-pulse && ./install.sh
@@ -220,6 +228,8 @@ Supports English city names, Hebrew names, zone-specific names (e.g., `Tel Aviv 
 
 | Variable | Values | Description |
 |----------|--------|-------------|
+| `CLAUDE_PULSE_DENSITY` | `minimal` / `regular` / `heavy` | Override auto-detected density tier |
+| `CLAUDE_PULSE_HIDE_COST` | `1` | Hide session cost (💰) in heavy mode — recommended for Max/Pro |
 | `RED_ALERT_CITIES` | comma-separated | Filter alerts to specific cities/zones |
 | `RED_ALERT_MODE` | `all` / `mock` | `all` = every alert. `mock` = offline test data |
 | `RED_ALERT_SOUND` | `off` | Disable alert sounds |
@@ -275,6 +285,7 @@ You can! But claude-pulse offers:
 
 | Version | Highlights |
 |---------|-----------|
+| **v3.0.0** | Adaptive density statusline (minimal/regular/heavy), ANSI RGB colors, `/setup-statusline` onboarding, session cost, city accumulation fix |
 | **v2.5.2** | Pre-alert banner persists after main alert expires; SessionStart hook no longer kills running daemon |
 | **v2.5.1** | Fix Sonnet 4.6 model detection (was showing "Sonnet 4.5") |
 | **v2.5.0** | Native `session_name` support — zero-latency conversation names, no API calls needed |
