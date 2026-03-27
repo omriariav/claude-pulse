@@ -180,7 +180,7 @@ build_state() {
                 local existing_pre_du now_cf
                 existing_pre_du=$(echo "$existing_pre" | jq -r '.display_until_unix // 0' 2>/dev/null)
                 now_cf=$(date +%s)
-                if [[ "$existing_pre_du" != "0" ]] && (( existing_pre_du > now_cf )); then
+                if [[ "$existing_pre_du" != "0" ]] && (( existing_pre_du >= now_cf )); then
                     pre_alert="$existing_pre"
                 fi
             fi
