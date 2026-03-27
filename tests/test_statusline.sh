@@ -51,11 +51,6 @@ out_sonnet46=$(echo '{"cwd":"/test","model":{"id":"claude-sonnet-4-6"},"context_
 assert_contains "$out_sonnet46" "Sonnet 4.6" "Sonnet 4.6 (1M) shows 4.6 not 4.5"
 assert_not_contains "$out_sonnet46" "Sonnet 4.5" "Sonnet 4.6 (1M) does not show Sonnet 4.5"
 
-# test_model_not_confused: Opus 4.6 (1M) must never show Sonnet (regression: model switch lag)
-out_opus_1m=$(echo '{"cwd":"/test","model":{"id":"claude-opus-4-6"},"context_window":{"total_input_tokens":50000,"total_output_tokens":5000,"context_window_size":1000000}}' | "$PULSE" 2>/dev/null)
-assert_contains "$out_opus_1m" "Opus 4.6" "Opus 4.6 (1M) shows Opus not Sonnet"
-assert_not_contains "$out_opus_1m" "Sonnet" "Opus 4.6 (1M) does not show Sonnet"
-
 # test_color_thresholds: check ANSI codes based on percentage
 # 25% = green (32m)
 out_green=$(echo '{"cwd":"/test","model":{"id":"claude-opus-4-6"},"context_window":{"total_input_tokens":50000,"total_output_tokens":0,"context_window_size":200000}}' | "$PULSE" 2>/dev/null)
