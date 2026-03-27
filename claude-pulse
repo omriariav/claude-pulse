@@ -709,7 +709,8 @@ fi
 # Build cost part (heavy only)
 cost_part=""
 if [[ "$density" == "heavy" ]] && [[ -n "$cost_usd" ]] && [[ "$cost_usd" != "" ]] && [[ "$cost_usd" != "null" ]]; then
-    cost_part=" · 💰 \$${cost_usd}"
+    cost_fmt=$(printf '%.2f' "$cost_usd" 2>/dev/null || echo "$cost_usd")
+    cost_part=" · 💰 \$${cost_fmt}"
 fi
 
 # Output — density-aware formatting
