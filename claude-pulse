@@ -709,8 +709,10 @@ fi
 # Build cost part (heavy only)
 cost_part=""
 if [[ "$density" == "heavy" ]] && [[ -z "$CLAUDE_PULSE_HIDE_COST" ]] && [[ -n "$cost_usd" ]] && [[ "$cost_usd" != "" ]] && [[ "$cost_usd" != "null" ]]; then
-    cost_fmt=$(printf '%.2f' "$cost_usd" 2>/dev/null || echo "$cost_usd")
-    cost_part=" · 💰 \$${cost_fmt}"
+    cost_int=$(printf '%.0f' "$cost_usd" 2>/dev/null || echo "${cost_usd%.*}")
+    # %4s right-aligns "$XX" so · after cost aligns with · after context %
+    cost_display=$(printf '%4s' "\$${cost_int}")
+    cost_part=" · 💰 ${cost_display}"
 fi
 
 # Output — density-aware formatting
@@ -755,7 +757,7 @@ case "$density" in
         printf "${color}🧠 ${bar} ${percent}%%${reset} · 🤖 ${model_name} (${context_label})${name_segment}${pr_segment} · 📁 ${short_cwd}"
         # Line 2: dots, includes cost
         if [[ -n "$rate_5h" ]]; then
-            printf "\n⚡ ${rate_5h_color}5h:%2d%%${reset}" "$rate_5h_int"
+            printf "\n⚡  ${rate_5h_color}5h:%2d%%${reset}" "$rate_5h_int"
             if [[ -n "$rate_7d" ]]; then
                 printf " · ${rate_7d_color}7d:%2d%%${reset}" "$rate_7d_int"
             fi
