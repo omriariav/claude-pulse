@@ -69,5 +69,28 @@ result6=$(build_state "uav1" "6" "uav" '["מטולה"]' '["Metula"]' "$((now7+5)
 assert_not_contains "$result6" "Tel Aviv" "diff category: cat 1 cities not merged into cat 6"
 assert_contains "$result6" "Metula" "diff category: cat 6 cities present"
 
+# test_pre_alert_survives_all_clear: pre_alert kept when main transitions to all-clear
+now8=$(date +%s)
+rm -f "$STATE_FILE"
+# Set up: missile as main, pre_alert with active TTL
+write_state "$(build_state "m2" "1" "missiles" '["מטולה"]' '["Metula"]' "$now8" 0)"
+# Add a pre_alert by simulating the cat14-while-missile path
+write_state "$(build_state "pre3" "14" "pre" '["תל אביב"]' '["Tel Aviv"]' "$now8" 0)"
+# Now all-clear arrives — pre_alert should survive
+result7=$(build_state "clear1" "13" "all clear" '[]' '[]' "$((now8+5))" "$((now8+5))")
+pre_du=$(echo "$result7" | jq -r '.pre_alert.display_until_unix // 0')
+assert_not_contains "$result7" '"pre_alert":null' "pre_alert survives all-clear while TTL active"
+
+# test_pre_alert_dropped_after_expiry: expired pre_alert not carried into all-clear
+now9=$(date +%s)
+rm -f "$STATE_FILE"
+write_state "$(build_state "m3" "1" "missiles" '["מטולה"]' '["Metula"]' "$now9" 0)"
+# Write pre_alert with already-expired display_until
+pre_expired=$(jq -n '{alert_id:"old_pre",cat:"14",title:"pre",cities:[],cities_en:[],last_seen_unix:1000,first_seen_unix:1000,display_until_unix:1001}')
+write_state "$(jq --argjson pa "$pre_expired" '.pre_alert = $pa' "$STATE_FILE")"
+result8=$(build_state "clear2" "13" "all clear" '[]' '[]' "$((now9+5))" "$((now9+5))")
+pre_val=$(echo "$result8" | jq -r '.pre_alert')
+assert_equals "$pre_val" "null" "expired pre_alert not carried into all-clear"
+
 cleanup
 report

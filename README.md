@@ -233,7 +233,7 @@ The daemon runs as a macOS LaunchAgent, managed by launchd. It auto-starts when 
 The recommended SessionStart hook command (in `~/.claude/settings.json`):
 
 ```bash
-launchctl list | grep -q com.claude-pulse.red-alert || launchctl load ~/Library/LaunchAgents/com.claude-pulse.red-alert.plist; launchctl kickstart -k "gui/$(id -u)/com.claude-pulse.red-alert" >/dev/null 2>&1; true
+launchctl list | grep -q com.claude-pulse.red-alert || launchctl load ~/Library/LaunchAgents/com.claude-pulse.red-alert.plist; launchctl kickstart "gui/$(id -u)/com.claude-pulse.red-alert" >/dev/null 2>&1; true
 ```
 
 This checks if the service is already loaded before trying to load it, avoiding errors when the daemon is already running via `RunAtLoad`.
