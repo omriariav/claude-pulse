@@ -1,4 +1,4 @@
-# claude-pulse.ps1 v2.5.0: Real-time token usage for Claude Code status line (Windows)
+# claude-pulse.ps1 v2.5.1: Real-time token usage for Claude Code status line (Windows)
 # Uses billing API (transcript) for accurate FULL context usage
 # Falls back to native context_window when transcript unavailable
 # Displays current model name and AI-generated conversation names
@@ -15,7 +15,9 @@ $model_id = if ($data.model.id) { $data.model.id } else { "claude-sonnet-4-5-202
 $model_name = switch -Wildcard ($model_id) {
     "claude-opus-4-6*" { "Opus 4.6"; break }
     "claude-opus-4*" { "Opus 4.5"; break }
-    "claude-sonnet-4*" { "Sonnet 4.5"; break }
+    "claude-sonnet-4-6*" { "Sonnet 4.6"; break }
+    "claude-sonnet-4-5*" { "Sonnet 4.5"; break }
+    "claude-sonnet-4*" { "Sonnet 4.x"; break }
     "claude-haiku-3-5*" { "Haiku 3.5"; break }
     "claude-3-5-haiku*" { "Haiku 3.5"; break }
     "claude-sonnet-3-5*" { "Sonnet 3.5"; break }

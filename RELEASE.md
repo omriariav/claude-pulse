@@ -1,5 +1,25 @@
 # Release Notes
 
+## v2.5.1 - Fix Sonnet 4.6 Model Detection
+
+**Released:** March 27, 2026
+
+### Bug Fix
+
+Sonnet 4.6 was incorrectly displayed as "Sonnet 4.5" in the statusline. The `claude-sonnet-4*` wildcard was too broad and matched all Sonnet 4.x models before version-specific patterns could be checked.
+
+Added explicit `claude-sonnet-4-6*` and `claude-sonnet-4-5*` patterns (most specific first) in both the bash and PowerShell scripts, matching the same ordering already used for Opus models.
+
+### Upgrade
+
+```bash
+cd claude-pulse
+git pull
+cp claude-pulse ~/.claude/statusline-command.sh
+```
+
+---
+
 ## v2.5.0 - Native Conversation Names
 
 **Released:** March 26, 2026
