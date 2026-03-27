@@ -757,9 +757,9 @@ case "$density" in
         printf "${color}🧠 ${bar} ${percent}%%${reset} · 🤖 ${model_name} (${context_label})${name_segment}${pr_segment} · 📁 ${short_cwd}"
         # Line 2: dots, includes cost
         if [[ -n "$rate_5h" ]]; then
-            printf "\n⚡  ${rate_5h_color}5h:%2d%%${reset}" "$rate_5h_int"
+            printf "\n⚡ ${rate_5h_color}5h:%2d%%${reset}" "$rate_5h_int"
             if [[ -n "$rate_7d" ]]; then
-                printf " · ${rate_7d_color}7d:%2d%%${reset}" "$rate_7d_int"
+                printf " · ${rate_7d_color}7d:%3d%%${reset}" "$rate_7d_int"
             fi
             printf "${cost_part}"
             if [[ -n "$alert_part" ]]; then
