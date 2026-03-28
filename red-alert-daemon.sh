@@ -496,12 +496,19 @@ while true; do
             fi
             _backoff=300
         fi
-        # Sleep in 10s chunks to allow timely shutdown when Claude exits
+        # Sleep in 10s chunks with liveness checks for timely shutdown
         _slept=0
         while (( _slept < _backoff )); do
             _chunk=$(( _backoff - _slept > 10 ? 10 : _backoff - _slept ))
             sleep "$_chunk"
             (( _slept += _chunk ))
+            # Check if Claude is still running — exit promptly if not
+            if command -v pgrep >/dev/null 2>&1; then
+                if ! pgrep -f "claude" >/dev/null 2>&1; then
+                    log "Claude not running during backoff, exiting"
+                    exit 0
+                fi
+            fi
         done
         continue
     fi
