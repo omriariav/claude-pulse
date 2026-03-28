@@ -37,13 +37,20 @@ Use the Edit tool to remove these keys from the `env` object in `~/.claude/setti
 - `RED_ALERT_MODE`
 - `RED_ALERT_SOUND`
 - `RED_ALERT_SOUND_COOLDOWN`
+- `RED_ALERT_SOUND_COOLDOWN_MISSILE`
+- `RED_ALERT_SOUND_COOLDOWN_PRE`
 - `RED_ALERT_MOCK_INTERVAL`
+- `RED_ALERT_DEBUG`
 
 Do NOT remove other env vars. Do NOT remove the `statusLine` config (claude-pulse itself stays installed).
 
-### 5. Confirm
+### 5. Remove SessionStart hook
+
+Read `~/.claude/settings.json`. From `hooks.SessionStart`, remove any hook entry containing `com.claude-pulse.red-alert`.
+
+### 6. Confirm
 
 Tell the user:
 - "Red Alert removed. The statusline will no longer show alerts."
 - "claude-pulse itself is still installed — only the alert feature was removed."
-- "To re-enable, run `/setup-red-alert`."
+- "To re-enable, run `/setup-statusline`."

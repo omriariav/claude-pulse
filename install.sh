@@ -137,8 +137,8 @@ PLIST
     fi
 
     echo ""
-    echo "To configure Red Alert notifications, run:  /setup-red-alert"
-    echo "Or restart Claude Code to use the statusline as-is."
+    echo "To customize density, cost display, and Red Alert:  /setup-statusline"
+    echo "Or just start using Claude Code — the statusline works immediately."
 fi
 
 echo ""

@@ -40,8 +40,9 @@ IFS=$'\x1f' read -r cwd transcript_path session_id model_id rate_5h rate_7d sess
 # Override with CLAUDE_PULSE_DENSITY env var, otherwise auto-detect from terminal width
 term_width=${COLUMNS:-$(tput cols 2>/dev/null || echo 120)}
 if [[ -n "$CLAUDE_PULSE_DENSITY" ]]; then
-    # Normalize to lowercase for case-insensitive matching
+    # Normalize to lowercase; fall back to regular for invalid values
     density=$(echo "$CLAUDE_PULSE_DENSITY" | tr '[:upper:]' '[:lower:]')
+    case "$density" in minimal|regular|heavy) ;; *) density="regular" ;; esac
 elif (( term_width < 100 )); then
     density="minimal"
 elif (( term_width >= 160 )); then
@@ -313,6 +314,12 @@ case "$density" in
 esac
 if [[ -n "$conv_name" ]] && (( ${#conv_name} > max_name )); then
     conv_name="${conv_name:0:$((max_name - 2))}.."
+fi
+
+# Set terminal tab title only when Claude Code doesn't provide its own session_name
+if [[ -n "$conv_name" ]] && { [[ -z "$session_name" ]] || [[ "$session_name" == "null" ]]; }; then
+    (sleep 0.3 && printf '\033]0;%s\007' "$conv_name" > /dev/tty 2>/dev/null) &
+    disown 2>/dev/null
 fi
 
 # Build name segment (density-aware)

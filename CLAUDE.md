@@ -42,7 +42,7 @@ Three tiers auto-detected from terminal width, overridable with `CLAUDE_PULSE_DE
 
 - **Minimal** (< 100 cols): Single line, `│` separators, no bar, abbreviated model (`Son4.6`), rates + alerts inline
 - **Regular** (100–159 cols): Two lines, emoji dividers (double-space), 10-char bare bar, `%2d` rate padding for alignment
-- **Heavy** (≥ 160 cols): Two lines, ` · ` dot separators, 20-char bracketed bar, full branch, `~/` path, optional session cost
+- **Heavy** (≥ 160 cols): Two lines, ` · ` dot separators, 20-char bracketed bar, full branch, optional session cost
 
 Key alignment rules:
 - **Regular** line 2: `%2d` for 5h, `%2d` for 7d — `🟢` lands under `🤖`

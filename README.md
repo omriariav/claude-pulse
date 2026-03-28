@@ -26,7 +26,7 @@
 
 **Heavy** (wide terminals):
 ```
-🧠 [██░░░░░░░░░░░░░░░░░░] 10% · 🤖 Opus 4.6 (1M) · 💬 Topic Name · 🌿 feat/bar (#42) · 📁 ~/Code/project
+🧠 [██░░░░░░░░░░░░░░░░░░] 10% · 🤖 Opus 4.6 (1M) · 💬 Topic Name · 🌿 feat/bar (#42) · 📁 project
 ⚡ 5h: 5% · 7d:  2% · 💰  $12 · 🟢 Alerts daemon ON
 ```
 

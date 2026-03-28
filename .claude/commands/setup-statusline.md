@@ -47,7 +47,7 @@ echo "${G}🧠 ████░░░░░░ 31%${R}  🤖 Sonnet 4.6 (1M)  �
 echo "⚡ ${G}5h: 5%${R}  7d: 2%  🟢 Alerts ON ${DM}(1)${R}"
 echo ""
 echo "${B}3) Heavy${R} ${DM}— full detail, wide terminals (160+ cols)${R}"
-echo "${G}🧠 [██████░░░░░░░░░░░░░░] 31%${R} · 🤖 Sonnet 4.6 (1M) · 💬 2503-work · 🌿 fix/alert-city-accumulation (#25) · 📁 ~/Code/claude-pulse"
+echo "${G}🧠 [██████░░░░░░░░░░░░░░] 31%${R} · 🤖 Sonnet 4.6 (1M) · 💬 2503-work · 🌿 fix/alert-city-accumulation (#25) · 📁 claude-pulse"
 echo "⚡ ${G}5h: 5%${R} · 7d:  2% · 💰  \$12 · 🟢 Alerts daemon ON ${DM}(1)${R}"
 echo ""
 echo "${B}4) Auto${R} ${DM}— adapts to terminal width automatically [recommended]${R}"
