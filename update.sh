@@ -190,6 +190,10 @@ apply_update() {
     done
     cp "${CLAUDE_DIR}/"${OTA_STATIC_GLOB} "$backup_dir/" 2>/dev/null || true
 
+    # Mark apply in-progress (crash recovery: next run detects incomplete apply)
+    local apply_marker="${CACHE_DIR}/apply_in_progress"
+    printf '%s\n%s' "$version" "$current_ver" > "$apply_marker"
+
     # Atomic swap: write to .tmp then mv (new inode, safe for running scripts)
     # statusline-command.sh <- claude-pulse
     if [[ -f "${STAGING_DIR}/claude-pulse" ]]; then
@@ -216,15 +220,21 @@ apply_update() {
     mkdir -p "${CLAUDE_DIR}/static"
     cp "${STAGING_DIR}/"static/*.m4a "${CLAUDE_DIR}/static/" 2>/dev/null || true
 
-    # Post-apply health check
-    local new_ver
+    # Post-apply health check — verify all versioned files updated
+    local new_ver check_ok=true
     new_ver=$(get_installed_version)
-    if [[ "$new_ver" != "$version" ]]; then
-        log "Health check failed: expected v${version}, got v${new_ver}"
-        # Rollback
+    [[ "$new_ver" != "$version" ]] && check_ok=false
+    local daemon_ver
+    daemon_ver=$(sed -n '2s/.*v\([0-9.]*\).*/\1/p' "${CLAUDE_DIR}/red-alert-daemon.sh" 2>/dev/null)
+    [[ -n "$daemon_ver" ]] && [[ "$daemon_ver" != "$version" ]] && check_ok=false
+
+    if [[ "$check_ok" != "true" ]]; then
+        log "Health check failed: expected v${version}, got statusline=v${new_ver} daemon=v${daemon_ver}"
+        # Rollback all files from backup
         for f in "${OTA_FILES[@]}"; do
             [[ -f "${backup_dir}/${f}" ]] && cp "${backup_dir}/${f}" "${CLAUDE_DIR}/${f}"
         done
+        rm -f "$apply_marker"
         log "Rolled back to v${current_ver}"
         return 1
     fi
@@ -232,11 +242,13 @@ apply_update() {
     # Request daemon restart (hook will handle it)
     echo "$version" > "${STATE_DIR}/daemon_restart_requested" 2>/dev/null
 
-    # Write notification for statusline badge
+    # Write notification for statusline badge and clear any stale notify-mode badge
     printf '%s\n%s' "$version" "$(date +%s)" > "${CACHE_DIR}/update_notification"
+    rm -f "${CACHE_DIR}/update_available"
 
-    # Clean up staging
+    # Clean up staging and apply marker
     rm -rf "$STAGING_DIR"
+    rm -f "$apply_marker"
 
     log "Applied v${version} successfully"
 }
@@ -261,6 +273,21 @@ handle_daemon_restart() {
 }
 
 # --- Main ---
+
+# Crash recovery: if a previous apply was interrupted, rollback from backup
+_apply_marker="${CACHE_DIR}/apply_in_progress"
+if [[ -f "$_apply_marker" ]]; then
+    _target_ver=$(head -1 "$_apply_marker" 2>/dev/null)
+    _backup_ver=$(tail -1 "$_apply_marker" 2>/dev/null)
+    _backup_dir="${CACHE_DIR}/versions/v${_backup_ver}"
+    if [[ -d "$_backup_dir" ]]; then
+        log "Crash recovery: incomplete apply of v${_target_ver} detected, rolling back to v${_backup_ver}"
+        for f in "${OTA_FILES[@]}"; do
+            [[ -f "${_backup_dir}/${f}" ]] && cp "${_backup_dir}/${f}" "${CLAUDE_DIR}/${f}"
+        done
+    fi
+    rm -f "$_apply_marker"
+fi
 
 # Always handle pending daemon restarts first
 handle_daemon_restart
