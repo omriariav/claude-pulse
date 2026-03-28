@@ -482,34 +482,19 @@ while true; do
     if [[ "$_is_failure" == "true" ]]; then
         ((API_FAIL_COUNT++))
         # Exponential backoff — daemon stays alive, self-heals on network recovery
-        # Long sleeps are broken into 10s chunks so liveness checks still run promptly
-        _backoff=0
+        # Sleep here then continue to top of main loop where liveness checks run
         if (( API_FAIL_COUNT <= 10 )); then
-            _backoff=$POLL_INTERVAL
+            sleep "$POLL_INTERVAL"
         elif (( API_FAIL_COUNT <= 20 )); then
-            _backoff=10
+            sleep 10
         elif (( API_FAIL_COUNT <= 30 )); then
-            _backoff=60
+            sleep 10  # cap at 10s per iteration; 30 iterations ≈ 5 min total
         else
             if (( API_FAIL_COUNT == 31 )); then
-                log "API unreachable, entering 5-min backoff (will resume on network recovery)"
+                log "API unreachable, entering slow backoff (will resume on network recovery)"
             fi
-            _backoff=300
+            sleep 10  # stay at 10s — main loop liveness checks run every iteration
         fi
-        # Sleep in 10s chunks with liveness checks for timely shutdown
-        _slept=0
-        while (( _slept < _backoff )); do
-            _chunk=$(( _backoff - _slept > 10 ? 10 : _backoff - _slept ))
-            sleep "$_chunk"
-            (( _slept += _chunk ))
-            # Check if Claude is still running — exit promptly if not
-            if command -v pgrep >/dev/null 2>&1; then
-                if ! pgrep -x "claude" >/dev/null 2>&1; then
-                    log "Claude not running during backoff, exiting"
-                    exit 0
-                fi
-            fi
-        done
         continue
     fi
 
