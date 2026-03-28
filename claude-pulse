@@ -724,13 +724,15 @@ elif [[ -n "$alert_indicator" ]]; then
     alert_part="${alert_indicator}"
 fi
 
-# Build cost part (heavy only)
+# Build cost part (heavy only, skip $0)
 cost_part=""
 if [[ "$density" == "heavy" ]] && [[ -z "$CLAUDE_PULSE_HIDE_COST" ]] && [[ -n "$cost_usd" ]] && [[ "$cost_usd" != "" ]] && [[ "$cost_usd" != "null" ]]; then
     cost_int=$(printf '%.0f' "$cost_usd" 2>/dev/null || echo "${cost_usd%.*}")
-    # %4s right-aligns "$XX" so · after cost aligns with · after context %
-    cost_display=$(printf '%4s' "\$${cost_int}")
-    cost_part=" · 💰 ${cost_display}"
+    if (( cost_int > 0 )); then
+        # %4s right-aligns "$XX" so · after cost aligns with · after context %
+        cost_display=$(printf '%4s' "\$${cost_int}")
+        cost_part=" · 💰 ${cost_display}"
+    fi
 fi
 
 # Output — density-aware formatting
@@ -757,7 +759,7 @@ case "$density" in
     regular)
         # Line 1: emoji-separated segments (double-space between)
         printf "${color}🧠 ${bar} ${percent}%%${reset}  🤖 ${model_name} (${context_label})${name_segment}${pr_segment}  📁 ${short_cwd}"
-        # Line 2: rates (always shown) + alerts, %2d padding for alignment
+        # Line 2: rates + alerts (only shown when data exists)
         if [[ -n "$rate_5h" ]]; then
             printf "\n⚡ ${rate_5h_color}5h:%2d%%${reset}" "$rate_5h_int"
             if [[ -n "$rate_7d" ]]; then
@@ -767,13 +769,13 @@ case "$density" in
                 printf "  ${alert_part}"
             fi
         elif [[ -n "$alert_part" ]]; then
-            printf "\n${alert_part}"
+            printf "\n  ${alert_part}"
         fi
         ;;
     heavy)
-        # Line 1: · dot separators, full detail
-        printf "${color}🧠 ${bar} ${percent}%%${reset} · 🤖 ${model_name} (${context_label})${name_segment}${pr_segment} · 📁 ${short_cwd}"
-        # Line 2: dots, includes cost
+        # Line 1: · dot separators, full detail (%2d pads percent so · aligns with line 2)
+        printf "${color}🧠 ${bar} %2d%%${reset} · 🤖 ${model_name} (${context_label})${name_segment}${pr_segment} · 📁 ${short_cwd}" "$percent"
+        # Line 2: rates + cost + alerts (only shown when data exists)
         if [[ -n "$rate_5h" ]]; then
             printf "\n⚡ ${rate_5h_color}5h:%2d%%${reset}" "$rate_5h_int"
             if [[ -n "$rate_7d" ]]; then
@@ -783,8 +785,14 @@ case "$density" in
             if [[ -n "$alert_part" ]]; then
                 printf " · ${alert_part}"
             fi
-        elif [[ -n "$alert_part" ]]; then
-            printf "\n${cost_part:+${cost_part} · }${alert_part}"
+        elif [[ -n "$alert_part" ]] || [[ -n "$cost_part" ]]; then
+            _line2=""
+            [[ -n "$cost_display" ]] && _line2="💰 ${cost_display}"
+            if [[ -n "$alert_part" ]]; then
+                [[ -n "$_line2" ]] && _line2="${_line2} · "
+                _line2="${_line2}${alert_part}"
+            fi
+            printf "\n  ${_line2}"
         fi
         ;;
 esac
