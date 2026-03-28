@@ -139,6 +139,8 @@ sed -i '' "s|https://api.github.com/repos/\${REPO}/releases/latest|http://localh
 sed -i '' "s|--proto '=https' --tlsv1.2 ||g" "${TEST_DIR}/test_update.sh"
 # Disable gh CLI in test (mock server is HTTP, not GitHub API)
 sed -i '' 's|command -v gh|command -v _gh_disabled_for_test|g' "${TEST_DIR}/test_update.sh"
+# Allow localhost in domain pinning for mock server
+sed -i '' "s|ALLOWED_HOSTS=\"github.com api.github.com\"|ALLOWED_HOSTS=\"github.com api.github.com localhost\"|" "${TEST_DIR}/test_update.sh"
 
 # Clear rate limit
 rm -f "${FAKE_CACHE_DIR}/last_update_check"
@@ -200,7 +202,7 @@ CLAUDE_PULSE_AUTO_UPDATE=auto bash "${TEST_DIR}/test_update.sh" 2>&1 || true
 
 bad_cksum_ver=$(sed -n '2s/.*v\([0-9.]*\).*/\1/p' "$FAKE_CLAUDE_DIR/statusline-command.sh")
 check "bad checksum: files NOT updated" '[[ "$bad_cksum_ver" == "$current_ver" ]]'
-check "bad checksum: logged mismatch" 'grep -q "Checksum mismatch" "$FAKE_STATE_DIR/update.log"'
+check "bad checksum: logged mismatch" 'grep -qi "checksum mismatch" "$FAKE_STATE_DIR/update.log"'
 
 # Restore correct checksum for remaining tests
 echo "${TARBALL_HASH}  claude-pulse-v${FAKE_VER}.tar.gz" > "${MOCK_RELEASE_DIR}/checksums.sha256"

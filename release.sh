@@ -48,6 +48,19 @@ if [[ "$pulse_ver" != "$VERSION" ]] || [[ "$daemon_ver" != "$VERSION" ]] || [[ "
     exit 1
 fi
 
+# Safety checks: clean tree and matching tag
+if [[ -n "$(git status --porcelain 2>/dev/null)" ]]; then
+    echo "Error: Working tree is dirty. Commit or stash changes before releasing."
+    exit 1
+fi
+
+current_branch=$(git branch --show-current 2>/dev/null)
+if [[ "$current_branch" != "main" ]]; then
+    echo "Warning: Releasing from branch '${current_branch}' (not main)"
+    read -rp "Continue? [y/N] " branch_confirm
+    [[ "$branch_confirm" == "y" || "$branch_confirm" == "Y" ]] || exit 0
+fi
+
 # Build tarball
 BUILD_DIR=$(mktemp -d)
 CONTENT_DIR="${BUILD_DIR}/claude-pulse-${TAG}"

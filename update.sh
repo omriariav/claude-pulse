@@ -4,6 +4,7 @@
 # Triggered by SessionStart hook — runs in background, singleton-locked
 
 set -euo pipefail
+umask 077
 
 REPO="omriariav/claude-pulse"
 CLAUDE_DIR="$HOME/.claude"
@@ -11,6 +12,9 @@ CACHE_DIR="$HOME/.cache/claude-pulse"
 STATE_DIR="$HOME/.local/state/claude-pulse"
 STAGING_DIR="${CACHE_DIR}/staging"
 LOG_FILE="${STATE_DIR}/update.log"
+
+# Pinned allowed hosts for artifact downloads (prevents open redirect attacks)
+ALLOWED_HOSTS="github.com api.github.com"
 
 # Files managed by OTA
 OTA_FILES=(statusline-command.sh red-alert-daemon.sh update.sh)
@@ -20,13 +24,39 @@ OTA_STATIC_GLOB="static/*.m4a"
 UPDATE_MODE="${CLAUDE_PULSE_AUTO_UPDATE:-auto}"
 
 mkdir -p "$CACHE_DIR" "$STATE_DIR" 2>/dev/null
+chmod 700 "$CACHE_DIR" "$STATE_DIR" 2>/dev/null
 
 log() { printf '%s [update] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$1" >> "$LOG_FILE" 2>/dev/null; }
 
+# Validate URL against pinned allowed hosts (strips port for comparison)
+_validate_url() {
+    local url="$1"
+    local host
+    host=$(echo "$url" | sed -n 's|^https\{0,1\}://\([^/:]*\).*|\1|p')
+    for allowed in $ALLOWED_HOSTS; do
+        [[ "$host" == "$allowed" ]] && return 0
+    done
+    log "Blocked download from untrusted host: ${host}"
+    return 1
+}
+
 # Singleton lock — only one update.sh runs at a time
+# Stale lock recovery: if lock is older than 10 minutes, reclaim it
 LOCK_DIR="${CACHE_DIR}/update.lock"
+LOCK_TTL=600
 if ! mkdir "$LOCK_DIR" 2>/dev/null; then
-    exit 0
+    if [[ -d "$LOCK_DIR" ]]; then
+        lock_age=$(( $(date +%s) - $(stat -f %m "$LOCK_DIR" 2>/dev/null || echo 0) ))
+        if (( lock_age > LOCK_TTL )); then
+            log "Reclaiming stale update lock (age: ${lock_age}s)"
+            rm -rf "$LOCK_DIR"
+            mkdir "$LOCK_DIR" 2>/dev/null || exit 0
+        else
+            exit 0
+        fi
+    else
+        exit 0
+    fi
 fi
 trap 'rm -rf "$LOCK_DIR"' EXIT
 
@@ -114,8 +144,10 @@ check_update() {
 }
 
 # Download a URL using gh CLI (private repos) with curl fallback
+# Validates URL against ALLOWED_HOSTS before downloading
 _download() {
     local url="$1" dest="$2"
+    _validate_url "$url" || return 1
     local ok=false
     if command -v gh &>/dev/null; then
         gh api "$url" > "$dest" 2>/dev/null && [[ -s "$dest" ]] && ok=true
@@ -142,26 +174,34 @@ download_and_stage() {
         return 1
     fi
 
-    # SHA256 verification (if checksum file available)
-    if [[ -n "$checksum_url" ]]; then
-        local checksum_file="${STAGING_DIR}/checksums.sha256"
-        if _download "$checksum_url" "$checksum_file"; then
-            local expected_hash actual_hash
-            expected_hash=$(grep -o '^[a-f0-9]\{64\}' "$checksum_file" | head -1)
-            actual_hash=$(shasum -a 256 "$tarball" 2>/dev/null | cut -d' ' -f1)
-            if [[ -z "$expected_hash" ]]; then
-                log "Checksum file malformed, skipping verification"
-            elif [[ "$actual_hash" != "$expected_hash" ]]; then
-                log "Checksum mismatch: expected ${expected_hash}, got ${actual_hash}"
-                rm -rf "$STAGING_DIR"
-                return 1
-            else
-                log "Checksum verified (SHA256: ${actual_hash:0:16}...)"
-            fi
-        else
-            log "Could not download checksum file, skipping verification"
-        fi
+    # SHA256 verification — fail closed (no checksum = no update)
+    if [[ -z "$checksum_url" ]]; then
+        log "Aborted: release has no checksum asset (unsigned releases not accepted)"
+        rm -rf "$STAGING_DIR"
+        return 1
     fi
+
+    local checksum_file="${STAGING_DIR}/checksums.sha256"
+    if ! _download "$checksum_url" "$checksum_file"; then
+        log "Aborted: could not download checksum file"
+        rm -rf "$STAGING_DIR"
+        return 1
+    fi
+
+    local expected_hash actual_hash
+    expected_hash=$(grep -o '^[a-f0-9]\{64\}' "$checksum_file" | head -1)
+    actual_hash=$(shasum -a 256 "$tarball" 2>/dev/null | cut -d' ' -f1)
+    if [[ -z "$expected_hash" ]]; then
+        log "Aborted: checksum file malformed"
+        rm -rf "$STAGING_DIR"
+        return 1
+    fi
+    if [[ "$actual_hash" != "$expected_hash" ]]; then
+        log "Aborted: checksum mismatch — expected ${expected_hash}, got ${actual_hash}"
+        rm -rf "$STAGING_DIR"
+        return 1
+    fi
+    log "Checksum verified (SHA256: ${actual_hash:0:16}...)"
 
     # Extract (GitHub tarballs have a top-level directory)
     if ! tar xzf "$tarball" -C "$STAGING_DIR" 2>/dev/null; then
