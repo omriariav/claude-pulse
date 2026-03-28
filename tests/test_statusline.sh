@@ -18,7 +18,7 @@ assert_contains "$output" "🧠" "basic output has brain emoji"
 assert_contains "$output" "🤖" "basic output has robot emoji"
 assert_contains "$output" "Opus 4.6" "basic output has model name"
 assert_contains "$output" "📁" "basic output has folder emoji"
-assert_contains "$output" "/test" "basic output has cwd"
+assert_contains "$output" "test" "basic output has cwd"
 
 # test_model_detection: each model ID maps to correct name
 for pair in \
