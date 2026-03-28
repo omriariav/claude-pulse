@@ -1,5 +1,27 @@
 # Release Notes
 
+## v3.0.1 - OTA Updates, Security Hardening, Tab Titles
+
+**Released:** March 28, 2026
+
+### What's New
+
+- **OTA update system** — automatic updates via GitHub releases with SHA256 checksum verification (fail-closed), domain pinning, atomic swap with rollback, and crash recovery
+- **Dynamic terminal tab titles** — sets tab to conversation name via OSC escape (works across Warp, iTerm2, WezTerm, Terminal.app, Kitty, Alacritty)
+- **Read-only statusline** — removed all `launchctl`/`kill` calls from the render loop; uses restart markers instead
+- **Daemon version tracking** — detects version mismatch, shows "update pending" badge
+- **API failure backoff** — Red Alert daemon stops polling after 30 consecutive failures (non-Israeli IP detection)
+- **`/release` skill** — guided release process enforcing version bump, docs, Codex review, and `release.sh` publish
+- **`/update-pulse` command** — manual update trigger for notify-mode users
+- **Security**: SSH commit signing required on main, branch protection, secret scanning, `umask 077`
+
+### Bug Fixes
+
+- Fixed empty line 2 on fresh conversations ($0 cost, missing rates)
+- Fixed percent alignment in heavy mode (`%2d` padding)
+- Fixed `local` outside function scope in heavy mode fallback
+- Fixed SessionStart hooks using wrong schema format
+
 ## v3.0.0 - Adaptive Density Statusline
 
 **Released:** March 27, 2026
