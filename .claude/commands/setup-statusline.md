@@ -15,6 +15,7 @@ CLAUDE_DIR="$HOME/.claude"
 mkdir -p "$CLAUDE_DIR/static"
 cp claude-pulse "$CLAUDE_DIR/statusline-command.sh" && chmod +x "$CLAUDE_DIR/statusline-command.sh"
 cp red-alert-daemon.sh "$CLAUDE_DIR/red-alert-daemon.sh" && chmod +x "$CLAUDE_DIR/red-alert-daemon.sh"
+cp update.sh "$CLAUDE_DIR/update.sh" && chmod +x "$CLAUDE_DIR/update.sh"
 cp static/*.m4a "$CLAUDE_DIR/static/" 2>/dev/null || true
 curl -s --max-time 10 -o "$CLAUDE_DIR/districts_eng.json" "https://www.oref.org.il/districts/districts_eng.json" || true
 ```
@@ -139,10 +140,14 @@ launchctl list | grep -q com.claude-pulse.red-alert || launchctl load ~/Library/
 launchctl kickstart "gui/$(id -u)/com.claude-pulse.red-alert" >/dev/null 2>&1 || true
 ```
 
-Add SessionStart hook — Read then Edit `~/.claude/settings.json`, merge into `hooks`:
+Add SessionStart hooks — Read then Edit `~/.claude/settings.json`, merge into `hooks.SessionStart` array (don't clobber existing hooks):
 
 ```json
-{"hooks":{"SessionStart":[{"hooks":[{"type":"command","command":"launchctl list | grep -q com.claude-pulse.red-alert || launchctl load ~/Library/LaunchAgents/com.claude-pulse.red-alert.plist; launchctl kickstart \"gui/$(id -u)/com.claude-pulse.red-alert\" >/dev/null 2>&1; true","timeout":5}]}]}}
+{"hooks":{"SessionStart":[
+  {"command":"~/.claude/update.sh >/dev/null 2>&1 &"},
+  {"command":"if [ -f ~/.local/state/claude-pulse/daemon_restart_requested ]; then rm -f ~/.local/state/claude-pulse/daemon_restart_requested; launchctl kickstart -k gui/$(id -u)/com.claude-pulse.red-alert 2>/dev/null; fi"},
+  {"command":"launchctl list | grep -q com.claude-pulse.red-alert || launchctl load ~/Library/LaunchAgents/com.claude-pulse.red-alert.plist 2>/dev/null; true"}
+]}}
 ```
 
 ## 8. Summary

@@ -376,6 +376,20 @@ if [[ -z "$current_ver" ]]; then
     exit 0
 fi
 
+# If a staged update exists (notify mode) and we're now in auto mode, apply it directly
+_avail_file="${CACHE_DIR}/update_available"
+if [[ "$UPDATE_MODE" == "auto" ]] && [[ -f "$_avail_file" ]]; then
+    _staged_ver=$(head -1 "$_avail_file" 2>/dev/null)
+    _staged_dir=$(tail -1 "$_avail_file" 2>/dev/null)
+    if [[ -n "$_staged_ver" ]] && [[ -d "$_staged_dir" ]]; then
+        log "Applying previously staged v${_staged_ver}"
+        STAGING_DIR="$_staged_dir"
+        apply_update "$_staged_ver" && exit 0
+    fi
+    # Staged dir gone — clean up stale marker
+    rm -f "$_avail_file"
+fi
+
 result=$(check_update "$current_ver") || exit 0
 
 IFS='|' read -r new_ver tarball_url checksum_url <<< "$result"

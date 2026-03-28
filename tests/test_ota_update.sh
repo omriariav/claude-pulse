@@ -235,7 +235,8 @@ rm -rf "$FAKE_CACHE_DIR/update.lock"
 mkdir -p "$FAKE_CACHE_DIR/update.lock"  # simulate held lock
 
 CLAUDE_PULSE_AUTO_UPDATE=auto bash "${TEST_DIR}/test_update.sh" 2>&1 || true
-check "singleton lock: second run exits without updating" '[[ "$notify_ver" == "$current_ver" ]]'
+lock_ver=$(sed -n '2s/.*v\([0-9.]*\).*/\1/p' "$FAKE_CLAUDE_DIR/statusline-command.sh")
+check "singleton lock: second run exits without updating" '[[ "$lock_ver" == "$current_ver" ]]'
 
 rm -rf "$FAKE_CACHE_DIR/update.lock"
 
