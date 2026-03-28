@@ -388,6 +388,11 @@ DAEMON_START_TIME=$(date +%s)
 PGREP_MISS_COUNT=0
 PGREP_MISS_THRESHOLD=3
 
+# API failure tracking — back off and stop after too many consecutive failures
+API_FAIL_COUNT=0
+API_FAIL_MAX=30        # stop polling after 30 consecutive failures (~60s at 2s interval)
+API_BACKOFF_AFTER=10   # start backing off after 10 failures
+
 # Touch heartbeat on startup to prevent immediate exit from stale file
 touch "$HEARTBEAT_FILE" 2>/dev/null
 
@@ -464,11 +469,21 @@ while true; do
     # Strip UTF-8 BOM and null bytes
     response=$(echo "$response" | sed 's/^\xEF\xBB\xBF//' | tr -d '\0')
 
-    # Skip if empty or invalid JSON
+    # Skip if empty or invalid JSON — track consecutive failures
     if [[ -z "$response" ]] || ! echo "$response" | jq empty 2>/dev/null; then
-        sleep "$POLL_INTERVAL"
+        ((API_FAIL_COUNT++))
+        if (( API_FAIL_COUNT >= API_FAIL_MAX )); then
+            log "API unreachable after ${API_FAIL_COUNT} consecutive failures (non-Israeli IP?). Stopping."
+            exit 0
+        fi
+        if (( API_FAIL_COUNT >= API_BACKOFF_AFTER )); then
+            sleep 10  # back off to 10s after repeated failures
+        else
+            sleep "$POLL_INTERVAL"
+        fi
         continue
     fi
+    API_FAIL_COUNT=0  # reset on successful response
 
     # Check if response has alert data
     cat_val=$(echo "$response" | jq -r '.cat // ""' 2>/dev/null)
