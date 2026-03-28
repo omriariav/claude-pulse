@@ -1,5 +1,14 @@
 # Release Notes
 
+## v3.0.2 - API Failure Backoff
+
+**Released:** March 29, 2026
+
+### What's New
+
+- **Exponential backoff for API failures** — daemon no longer dies after consecutive failures (e.g., lid close/sleep). Uses tiered backoff (2s, 10s, capped at 10s) and self-heals when network recovers. First valid response resets to normal polling.
+- **OTA test uses dynamic version** — no longer hardcoded, works across version bumps
+
 ## v3.0.1 - OTA Updates, Security Hardening, Tab Titles
 
 **Released:** March 28, 2026
