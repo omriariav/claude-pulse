@@ -504,7 +504,7 @@ while true; do
             (( _slept += _chunk ))
             # Check if Claude is still running — exit promptly if not
             if command -v pgrep >/dev/null 2>&1; then
-                if ! pgrep -f "claude" >/dev/null 2>&1; then
+                if ! pgrep -x "claude" >/dev/null 2>&1; then
                     log "Claude not running during backoff, exiting"
                     exit 0
                 fi
