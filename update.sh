@@ -91,37 +91,75 @@ check_update() {
         return 1
     fi
 
-    local tarball_url
-    tarball_url=$(echo "$api_response" | jq -r '.tarball_url // empty' 2>/dev/null)
+    # Prefer uploaded release assets (tarball + checksums) over GitHub auto-generated tarball
+    local tarball_url checksum_url=""
+    tarball_url=$(echo "$api_response" | jq -r '
+        .assets[]? | select(.name | test("claude-pulse.*\\.tar\\.gz$")) | .browser_download_url
+    ' 2>/dev/null | head -1)
+    checksum_url=$(echo "$api_response" | jq -r '
+        .assets[]? | select(.name | test("checksums\\.sha256$")) | .browser_download_url
+    ' 2>/dev/null | head -1)
+
+    # Fallback to GitHub auto-generated tarball (no checksum available)
+    if [[ -z "$tarball_url" ]]; then
+        tarball_url=$(echo "$api_response" | jq -r '.tarball_url // empty' 2>/dev/null)
+    fi
     if [[ -z "$tarball_url" ]]; then
         log "No tarball URL in release"
         return 1
     fi
 
     log "New version available: v${latest_ver} (current: v${current_ver})"
-    echo "${latest_ver}|${tarball_url}"
+    echo "${latest_ver}|${tarball_url}|${checksum_url}"
+}
+
+# Download a URL using gh CLI (private repos) with curl fallback
+_download() {
+    local url="$1" dest="$2"
+    local ok=false
+    if command -v gh &>/dev/null; then
+        gh api "$url" > "$dest" 2>/dev/null && [[ -s "$dest" ]] && ok=true
+    fi
+    if [[ "$ok" != "true" ]]; then
+        curl --proto '=https' --tlsv1.2 --fail --silent --max-time 30 \
+            -L -o "$dest" "$url" 2>/dev/null || return 1
+    fi
 }
 
 # Download and validate release artifacts
 download_and_stage() {
-    local version="$1" tarball_url="$2"
+    local version="$1" tarball_url="$2" checksum_url="${3:-}"
     log "Downloading v${version}"
 
     rm -rf "$STAGING_DIR"
     mkdir -p "$STAGING_DIR"
 
-    # Download tarball — gh CLI for auth (private repos), curl fallback
+    # Download tarball
     local tarball="${STAGING_DIR}/release.tar.gz"
-    local dl_ok=false
-    if command -v gh &>/dev/null; then
-        gh api "$tarball_url" > "$tarball" 2>/dev/null && dl_ok=true
+    if ! _download "$tarball_url" "$tarball"; then
+        log "Download failed"
+        rm -rf "$STAGING_DIR"
+        return 1
     fi
-    if [[ "$dl_ok" != "true" ]]; then
-        if ! curl --proto '=https' --tlsv1.2 --fail --silent --max-time 30 \
-            -L -o "$tarball" "$tarball_url" 2>/dev/null; then
-            log "Download failed"
-            rm -rf "$STAGING_DIR"
-            return 1
+
+    # SHA256 verification (if checksum file available)
+    if [[ -n "$checksum_url" ]]; then
+        local checksum_file="${STAGING_DIR}/checksums.sha256"
+        if _download "$checksum_url" "$checksum_file"; then
+            local expected_hash actual_hash
+            expected_hash=$(grep -o '^[a-f0-9]\{64\}' "$checksum_file" | head -1)
+            actual_hash=$(shasum -a 256 "$tarball" 2>/dev/null | cut -d' ' -f1)
+            if [[ -z "$expected_hash" ]]; then
+                log "Checksum file malformed, skipping verification"
+            elif [[ "$actual_hash" != "$expected_hash" ]]; then
+                log "Checksum mismatch: expected ${expected_hash}, got ${actual_hash}"
+                rm -rf "$STAGING_DIR"
+                return 1
+            else
+                log "Checksum verified (SHA256: ${actual_hash:0:16}...)"
+            fi
+        else
+            log "Could not download checksum file, skipping verification"
         fi
     fi
 
@@ -300,9 +338,9 @@ fi
 
 result=$(check_update "$current_ver") || exit 0
 
-IFS='|' read -r new_ver tarball_url <<< "$result"
+IFS='|' read -r new_ver tarball_url checksum_url <<< "$result"
 
-staged_ver=$(download_and_stage "$new_ver" "$tarball_url") || exit 1
+staged_ver=$(download_and_stage "$new_ver" "$tarball_url" "$checksum_url") || exit 1
 
 if [[ "$UPDATE_MODE" == "notify" ]]; then
     notify_only "$staged_ver"

@@ -73,13 +73,27 @@ check "tarball has v${FAKE_VER}" '[[ "$new_ver_in_tarball" == "$FAKE_VER" ]]'
 echo ""
 echo "--- Setup: Start mock HTTP server ---"
 
-# Create mock GitHub API response
+# Generate SHA256 checksum for the tarball
+TARBALL_HASH=$(shasum -a 256 "$MOCK_RELEASE_DIR/release.tar.gz" | cut -d' ' -f1)
+echo "${TARBALL_HASH}  claude-pulse-v${FAKE_VER}.tar.gz" > "${MOCK_RELEASE_DIR}/checksums.sha256"
+
+# Create mock GitHub API response (with release assets for checksum verification)
 cat > "${MOCK_RELEASE_DIR}/api_response.json" <<EOF
 {
   "tag_name": "v${FAKE_VER}",
   "tarball_url": "http://localhost:${MOCK_SERVER_PORT}/release.tar.gz",
   "name": "v${FAKE_VER}",
-  "body": "Test release for OTA QA"
+  "body": "Test release for OTA QA",
+  "assets": [
+    {
+      "name": "claude-pulse-v${FAKE_VER}.tar.gz",
+      "browser_download_url": "http://localhost:${MOCK_SERVER_PORT}/release.tar.gz"
+    },
+    {
+      "name": "checksums.sha256",
+      "browser_download_url": "http://localhost:${MOCK_SERVER_PORT}/checksums.sha256"
+    }
+  ]
 }
 EOF
 
@@ -166,7 +180,30 @@ check "update log exists" '[[ -f "$FAKE_STATE_DIR/update.log" ]]'
 if [[ -f "$FAKE_STATE_DIR/update.log" ]]; then
     check "log mentions new version" 'grep -q "v${FAKE_VER}" "$FAKE_STATE_DIR/update.log"'
     check "log mentions success" 'grep -q "successfully" "$FAKE_STATE_DIR/update.log"'
+    check "log mentions checksum verified" 'grep -q "Checksum verified" "$FAKE_STATE_DIR/update.log"'
 fi
+
+# --- Phase 5b: Test bad checksum rejection ---
+echo ""
+echo "--- Test: Bad checksum rejection ---"
+
+# Reset: reinstall v3.0.0
+cp "$SCRIPT_DIR/claude-pulse" "$FAKE_CLAUDE_DIR/statusline-command.sh"
+cp "$SCRIPT_DIR/red-alert-daemon.sh" "$FAKE_CLAUDE_DIR/red-alert-daemon.sh"
+rm -f "${FAKE_CACHE_DIR}/last_update_check"
+rm -rf "${FAKE_CACHE_DIR}/update.lock"
+
+# Corrupt the checksum file on the server
+echo "0000000000000000000000000000000000000000000000000000000000000000  claude-pulse-v${FAKE_VER}.tar.gz" > "${MOCK_RELEASE_DIR}/checksums.sha256"
+
+CLAUDE_PULSE_AUTO_UPDATE=auto bash "${TEST_DIR}/test_update.sh" 2>&1 || true
+
+bad_cksum_ver=$(sed -n '2s/.*v\([0-9.]*\).*/\1/p' "$FAKE_CLAUDE_DIR/statusline-command.sh")
+check "bad checksum: files NOT updated" '[[ "$bad_cksum_ver" == "$current_ver" ]]'
+check "bad checksum: logged mismatch" 'grep -q "Checksum mismatch" "$FAKE_STATE_DIR/update.log"'
+
+# Restore correct checksum for remaining tests
+echo "${TARBALL_HASH}  claude-pulse-v${FAKE_VER}.tar.gz" > "${MOCK_RELEASE_DIR}/checksums.sha256"
 
 # --- Phase 6: Test notify mode ---
 echo ""
