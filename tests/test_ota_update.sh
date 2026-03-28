@@ -45,10 +45,12 @@ current_ver=$(sed -n '2s/.*v\([0-9.]*\).*/\1/p' "$FAKE_CLAUDE_DIR/statusline-com
 echo "Installed version: v${current_ver}"
 check "current version extracted" '[[ -n "$current_ver" ]]'
 
-# --- Phase 2: Create fake v3.0.1 release ---
+# --- Phase 2: Create fake release (current version + 0.0.1) ---
 echo ""
-echo "--- Setup: Create fake v3.0.1 release ---"
-FAKE_VER="3.0.1"
+# Compute fake version: bump patch by 1
+_cur_patch=${current_ver##*.}
+FAKE_VER="${current_ver%.*}.$((_cur_patch + 1))"
+echo "--- Setup: Create fake v${FAKE_VER} release ---"
 FAKE_RELEASE_SRC="${MOCK_RELEASE_DIR}/omriariav-claude-pulse-abc1234"
 mkdir -p "$FAKE_RELEASE_SRC/static"
 

@@ -388,10 +388,10 @@ DAEMON_START_TIME=$(date +%s)
 PGREP_MISS_COUNT=0
 PGREP_MISS_THRESHOLD=3
 
-# API failure tracking — back off and stop after too many consecutive failures
+# API failure tracking — exponential backoff, daemon never dies
+# Tiers: 1-10 = 2s, 11-20 = 10s, 21-30 = 60s, 31+ = 300s (5 min)
+# First successful response resets to normal 2s polling
 API_FAIL_COUNT=0
-API_FAIL_MAX=30        # stop polling after 30 consecutive failures (~4-6 min with backoff)
-API_BACKOFF_AFTER=10   # start backing off (10s interval) after 10 failures
 
 # Touch heartbeat on startup to prevent immediate exit from stale file
 touch "$HEARTBEAT_FILE" 2>/dev/null
@@ -483,14 +483,18 @@ while true; do
 
     if [[ "$_is_failure" == "true" ]]; then
         ((API_FAIL_COUNT++))
-        if (( API_FAIL_COUNT >= API_FAIL_MAX )); then
-            log "API unreachable after ${API_FAIL_COUNT} consecutive failures (non-Israeli IP?). Stopping."
-            exit 0
-        fi
-        if (( API_FAIL_COUNT >= API_BACKOFF_AFTER )); then
-            sleep 10
-        else
+        # Exponential backoff — daemon stays alive, self-heals on network recovery
+        if (( API_FAIL_COUNT <= 10 )); then
             sleep "$POLL_INTERVAL"
+        elif (( API_FAIL_COUNT <= 20 )); then
+            sleep 10
+        elif (( API_FAIL_COUNT <= 30 )); then
+            sleep 60
+        else
+            if (( API_FAIL_COUNT == 31 )); then
+                log "API unreachable, entering 5-min backoff (will resume on network recovery)"
+            fi
+            sleep 300
         fi
         continue
     fi
