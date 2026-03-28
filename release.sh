@@ -34,12 +34,14 @@ for f in "${RELEASE_FILES[@]}"; do
     fi
 done
 
-# Verify version consistency across files
+# Verify version consistency across ALL versioned files
 pulse_ver=$(sed -n '2s/.*v\([0-9.]*\).*/\1/p' claude-pulse)
+ps1_ver=$(sed -n '1s/.*v\([0-9.]*\).*/\1/p' claude-pulse.ps1 2>/dev/null || echo "MISSING")
 daemon_ver=$(sed -n '2s/.*v\([0-9.]*\).*/\1/p' red-alert-daemon.sh)
 update_ver=$(sed -n '2s/.*v\([0-9.]*\).*/\1/p' update.sh)
 
 echo "  claude-pulse:       v${pulse_ver}"
+echo "  claude-pulse.ps1:   v${ps1_ver}"
 echo "  red-alert-daemon:   v${daemon_ver}"
 echo "  update.sh:          v${update_ver}"
 
@@ -47,8 +49,23 @@ if [[ "$pulse_ver" != "$VERSION" ]] || [[ "$daemon_ver" != "$VERSION" ]] || [[ "
     echo "Error: Version mismatch — all files must be v${VERSION}"
     exit 1
 fi
+if [[ "$ps1_ver" != "$VERSION" ]]; then
+    echo "Warning: claude-pulse.ps1 is v${ps1_ver} (expected v${VERSION})"
+    read -rp "Continue anyway? [y/N] " ps1_confirm
+    [[ "$ps1_confirm" == "y" || "$ps1_confirm" == "Y" ]] || exit 0
+fi
 
-# Safety checks: clean tree and matching tag
+# Check that tag doesn't already exist
+if git tag -l "$TAG" | grep -q "$TAG"; then
+    echo "Error: Tag ${TAG} already exists locally"
+    exit 1
+fi
+if gh release view "$TAG" --repo "$REPO" &>/dev/null; then
+    echo "Error: Release ${TAG} already exists on GitHub"
+    exit 1
+fi
+
+# Safety checks: clean tree
 if [[ -n "$(git status --porcelain 2>/dev/null)" ]]; then
     echo "Error: Working tree is dirty. Commit or stash changes before releasing."
     exit 1
@@ -102,15 +119,29 @@ fi
 # Create GitHub release with assets
 echo ""
 echo "Creating release ${TAG}..."
-gh release create "$TAG" \
+if ! gh release create "$TAG" \
     --repo "$REPO" \
     --title "${TAG}" \
     --generate-notes \
     "$TARBALL_NAME" \
-    "$CHECKSUM_FILE"
+    "$CHECKSUM_FILE"; then
+    echo ""
+    echo "ERROR: Release creation failed."
+    echo "To clean up a partial release/tag:"
+    echo "  gh release delete ${TAG} --repo ${REPO} --yes 2>/dev/null"
+    echo "  git tag -d ${TAG} 2>/dev/null"
+    echo "  git push origin :refs/tags/${TAG} 2>/dev/null"
+    echo "Local artifacts preserved: ${TARBALL_NAME}, ${CHECKSUM_FILE}"
+    exit 1
+fi
 
 echo ""
 echo "Release published: https://github.com/${REPO}/releases/tag/${TAG}"
+
+# Verify checksum asset is attached (required for OTA)
+if ! gh release view "$TAG" --repo "$REPO" --json assets --jq '.assets[].name' 2>/dev/null | grep -q "checksums.sha256"; then
+    echo "WARNING: checksums.sha256 not found in release assets — OTA will reject this release"
+fi
 
 # Clean up local artifacts
 rm -f "$TARBALL_NAME" "$CHECKSUM_FILE"
