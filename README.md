@@ -5,8 +5,8 @@
 **claude-pulse** displays your current Claude Code token usage directly in your status line, helping you stay aware of context consumption without running `/context` manually.
 
 ```
-🧠 [██████░░░░░░░░░░░░░░] 31% · 🤖 Opus 4.6 (1M) · 💬 wrap-set-up · 🌿 fix/alert-accumulation (#25) · 📁 claude-pulse
-⚡ 5h: 8% · 7d: 13% · 💰   $1 · 🟢 Alerts daemon ON
+🧠 [████████░░░░░░░░░░░░] 42% · 🤖 Opus 4.6 (1M) · 💬 API Refactor · 🌿 feat/auth-flow (#12) · 📁 my-project
+⚡ 5h: 5% · 7d:  2% · 💰  $3 · 🟢 Alerts daemon ON
 ```
 
 ## Features
