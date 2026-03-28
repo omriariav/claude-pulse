@@ -306,6 +306,25 @@ elif [[ -n "$transcript_path" ]] && [[ "$transcript_path" != "null" ]] && [[ -n 
     fi
 fi
 
+# Set terminal tab title (full name, before truncation) — only when Claude Code doesn't provide its own
+# Configurable via CLAUDE_PULSE_TAB_TITLE (default: on)
+if [[ "${CLAUDE_PULSE_TAB_TITLE:-on}" != "off" ]] && [[ -n "$conv_name" ]] && { [[ -z "$session_name" ]] || [[ "$session_name" == "null" ]]; }; then
+    # Sanitize: strip control characters (ESC, BEL, newlines, etc.) to prevent terminal escape injection
+    safe_title=$(printf '%s' "$conv_name" | tr -d '\000-\037\177')
+    if [[ -n "$safe_title" ]]; then
+        # Only write if title changed (avoid process churn on every refresh)
+        title_cache="${cache_dir}/.last_tab_title"
+        last_title=""
+        [[ -f "$title_cache" ]] && last_title=$(cat "$title_cache" 2>/dev/null)
+        if [[ "$safe_title" != "$last_title" ]]; then
+            mkdir -p "$cache_dir"
+            printf '%s' "$safe_title" > "$title_cache"
+            (sleep 0.3 && printf '\033]0;%s\007' "$safe_title" > /dev/tty 2>/dev/null) &
+            disown 2>/dev/null
+        fi
+    fi
+fi
+
 # Truncate long conversation names (density-aware)
 case "$density" in
     minimal) max_name=12 ;;
@@ -314,12 +333,6 @@ case "$density" in
 esac
 if [[ -n "$conv_name" ]] && (( ${#conv_name} > max_name )); then
     conv_name="${conv_name:0:$((max_name - 2))}.."
-fi
-
-# Set terminal tab title only when Claude Code doesn't provide its own session_name
-if [[ -n "$conv_name" ]] && { [[ -z "$session_name" ]] || [[ "$session_name" == "null" ]]; }; then
-    (sleep 0.3 && printf '\033]0;%s\007' "$conv_name" > /dev/tty 2>/dev/null) &
-    disown 2>/dev/null
 fi
 
 # Build name segment (density-aware)
