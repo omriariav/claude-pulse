@@ -389,8 +389,8 @@ PGREP_MISS_COUNT=0
 PGREP_MISS_THRESHOLD=3
 
 # API failure tracking — exponential backoff, daemon never dies
-# Tiers: 1-10 = 2s, 11-20 = 10s, 21-30 = 60s, 31+ = 300s (5 min)
-# First successful response resets to normal 2s polling
+# Tiers: 1-10 = 2s, 11+ = 10s (capped so main loop liveness checks run)
+# First valid JSON response resets to normal 2s polling
 API_FAIL_COUNT=0
 
 # Touch heartbeat on startup to prevent immediate exit from stale file
