@@ -469,36 +469,42 @@ while true; do
     # Strip UTF-8 BOM and null bytes
     response=$(echo "$response" | sed 's/^\xEF\xBB\xBF//' | tr -d '\0')
 
-    # Track consecutive failures — empty response, invalid JSON, or non-alert JSON (e.g. error payload)
+    # Track consecutive failures — only empty response or invalid JSON counts as failure
+    # Valid JSON (even without .cat) means the API is reachable — reset counter
     _is_failure=false
     if [[ -z "$response" ]] || ! echo "$response" | jq empty 2>/dev/null; then
         _is_failure=true
-    elif ! echo "$response" | jq -e '.cat // empty' &>/dev/null; then
-        # Valid JSON but not an alert object (could be {} or {"error":"..."} from geo-block)
-        # Only count as failure if we've never seen a real alert (avoids false positives during quiet periods)
-        if (( API_FAIL_COUNT > 0 )); then
-            _is_failure=true
-        fi
+    else
+        # Valid JSON response — API is reachable, reset backoff
+        API_FAIL_COUNT=0
     fi
 
     if [[ "$_is_failure" == "true" ]]; then
         ((API_FAIL_COUNT++))
         # Exponential backoff — daemon stays alive, self-heals on network recovery
+        # Long sleeps are broken into 10s chunks so liveness checks still run promptly
+        _backoff=0
         if (( API_FAIL_COUNT <= 10 )); then
-            sleep "$POLL_INTERVAL"
+            _backoff=$POLL_INTERVAL
         elif (( API_FAIL_COUNT <= 20 )); then
-            sleep 10
+            _backoff=10
         elif (( API_FAIL_COUNT <= 30 )); then
-            sleep 60
+            _backoff=60
         else
             if (( API_FAIL_COUNT == 31 )); then
                 log "API unreachable, entering 5-min backoff (will resume on network recovery)"
             fi
-            sleep 300
+            _backoff=300
         fi
+        # Sleep in 10s chunks to allow timely shutdown when Claude exits
+        _slept=0
+        while (( _slept < _backoff )); do
+            _chunk=$(( _backoff - _slept > 10 ? 10 : _backoff - _slept ))
+            sleep "$_chunk"
+            (( _slept += _chunk ))
+        done
         continue
     fi
-    API_FAIL_COUNT=0
 
     # Check if response has alert data
     cat_val=$(echo "$response" | jq -r '.cat // ""' 2>/dev/null)
