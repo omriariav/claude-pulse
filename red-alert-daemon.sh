@@ -1,5 +1,5 @@
 #!/bin/bash
-# red-alert-daemon.sh: Background daemon for Pikud HaOref alert monitoring
+# red-alert-daemon.sh v3.0.0: Background daemon for Pikud HaOref alert monitoring
 # Polls the official alert API every 2 seconds and writes state to disk
 # Supports: normal mode (API), all mode (API, no filter), mock mode (offline testing)
 
@@ -8,6 +8,8 @@ mkdir -p "$STATE_DIR" 2>/dev/null
 STATE_FILE="${STATE_DIR}/red_alert_state.json"
 PID_FILE="${STATE_DIR}/red_alert_daemon.pid"
 LOG_FILE="${STATE_DIR}/red_alert_daemon.log"
+VERSION_FILE="${STATE_DIR}/daemon_version"
+DAEMON_VERSION=$(sed -n '2s/.*v\([0-9.]*\).*/\1/p' "$0" 2>/dev/null)
 POLL_INTERVAL="${RED_ALERT_POLL_INTERVAL:-2}"
 API_URL="https://www.oref.org.il/warningMessages/alert/alerts.json"
 
@@ -30,10 +32,10 @@ log() {
 
 cleanup() {
     log "Daemon stopping (PID $$)"
-    # Only remove PID file and lock if they're ours
+    # Only remove PID/version files and lock if they're ours
     current_pid=$(cat "$PID_FILE" 2>/dev/null)
     if [[ "$current_pid" == "$$" ]]; then
-        rm -f "$PID_FILE"
+        rm -f "$PID_FILE" "$VERSION_FILE"
         rm -rf "${STATE_DIR}/daemon.lock"
     fi
     exit 0
@@ -375,7 +377,8 @@ fi
 # We hold the lock — write PID immediately (inside lock dir + state dir)
 echo $$ > "$LOCK_PID"
 echo $$ > "$PID_FILE"
-log "Daemon started (PID $$, mode=${RED_ALERT_MODE:-normal})"
+[[ -n "$DAEMON_VERSION" ]] && echo "$DAEMON_VERSION" > "$VERSION_FILE"
+log "Daemon started (PID $$, v${DAEMON_VERSION:-unknown}, mode=${RED_ALERT_MODE:-normal})"
 
 mock_index=0
 

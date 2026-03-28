@@ -689,30 +689,51 @@ if [[ -n "$rate_7d" ]]; then
     fi
 fi
 
-# Alert status indicator
+# Alert status indicator (READ-ONLY — no launchctl/kill from statusline)
 alert_indicator=""
 if [[ -n "$RED_ALERT_CITIES" ]] || [[ -n "$RED_ALERT_MODE" ]]; then
     _pid_file="${RED_ALERT_PID_FILE:-$HOME/.local/state/claude-pulse/red_alert_daemon.pid}"
+    _state_dir="${RED_ALERT_STATE_DIR:-$HOME/.local/state/claude-pulse}"
+    _ver_file="${_state_dir}/daemon_version"
+    _expected_ver=$(sed -n '2s/.*v\([0-9.]*\).*/\1/p' "$HOME/.claude/red-alert-daemon.sh" 2>/dev/null)
+    _restart_request="${_state_dir}/daemon_restart_requested"
     _debug_suffix=""
     if [[ -n "$RED_ALERT_DEBUG" ]]; then
         _daemon_count=$(pgrep -f "red-alert-daemon" 2>/dev/null | wc -l | tr -d ' ')
         _debug_suffix=" (${_daemon_count})"
     fi
     if [[ -f "$_pid_file" ]] && kill -0 "$(cat "$_pid_file" 2>/dev/null)" 2>/dev/null; then
-        if [[ -z "$alert_segment" ]]; then
+        _running_ver=$(cat "$_ver_file" 2>/dev/null)
+        if [[ -n "$_expected_ver" ]] && [[ -n "$_running_ver" ]] && [[ "$_running_ver" != "$_expected_ver" ]]; then
+            # Version mismatch — drop restart marker for SessionStart hook to pick up
+            echo "$_expected_ver" > "$_restart_request" 2>/dev/null
+            alert_indicator="${C_YELLOW}🟡 Daemon v${_running_ver} (update pending)${_debug_suffix}${reset}"
+        elif [[ -z "$alert_segment" ]]; then
             alert_indicator="${C_GREEN}🟢 Alerts daemon ON${_debug_suffix}${reset}"
         fi
     else
-        # Only restart if truly zero daemons (avoids spawning duplicates)
-        _daemon_count=$(pgrep -f "red-alert-daemon" 2>/dev/null | wc -l | tr -d ' ')
-        if [[ "$_daemon_count" == "0" ]]; then
-            launchctl kickstart "gui/$(id -u)/com.claude-pulse.red-alert" 2>/dev/null
-        fi
-        if [[ -n "$RED_ALERT_DEBUG" ]]; then
-            _debug_suffix=" (${_daemon_count})"
-        fi
+        # Daemon not running — drop restart marker (hook or update.sh will handle it)
+        touch "$_restart_request" 2>/dev/null
         alert_indicator="${C_GRAY}🔕 Alerts daemon not running${_debug_suffix}${reset}"
     fi
+fi
+
+# OTA update badge (read-only — just reads state files written by update.sh)
+update_badge=""
+_notif_file="${cache_dir}/update_notification"
+_avail_file="${cache_dir}/update_available"
+if [[ -f "$_notif_file" ]]; then
+    _notif_ver=$(head -1 "$_notif_file" 2>/dev/null)
+    _notif_time=$(tail -1 "$_notif_file" 2>/dev/null)
+    _now=$(date +%s)
+    if [[ -n "$_notif_time" ]] && (( _now - _notif_time < 3600 )); then
+        update_badge="${C_GREEN}🔄 Updated to v${_notif_ver}${reset}"
+    else
+        rm -f "$_notif_file"
+    fi
+elif [[ -f "$_avail_file" ]]; then
+    _avail_ver=$(head -1 "$_avail_file" 2>/dev/null)
+    update_badge="${C_YELLOW}🔄 v${_avail_ver} available${reset}"
 fi
 
 # Build alert part (active alert or daemon indicator) — used by all densities
@@ -755,6 +776,9 @@ case "$density" in
         if [[ -n "$alert_part" ]]; then
             printf " ${SEP} ${alert_part}"
         fi
+        if [[ -n "$update_badge" ]]; then
+            printf " ${SEP} ${update_badge}"
+        fi
         ;;
     regular)
         # Line 1: emoji-separated segments (double-space between)
@@ -768,8 +792,13 @@ case "$density" in
             if [[ -n "$alert_part" ]]; then
                 printf "  ${alert_part}"
             fi
-        elif [[ -n "$alert_part" ]]; then
-            printf "\n  ${alert_part}"
+            if [[ -n "$update_badge" ]]; then
+                printf "  ${update_badge}"
+            fi
+        elif [[ -n "$alert_part" ]] || [[ -n "$update_badge" ]]; then
+            printf "\n "
+            [[ -n "$alert_part" ]] && printf " ${alert_part}"
+            [[ -n "$update_badge" ]] && printf "  ${update_badge}"
         fi
         ;;
     heavy)
@@ -785,12 +814,19 @@ case "$density" in
             if [[ -n "$alert_part" ]]; then
                 printf " · ${alert_part}"
             fi
-        elif [[ -n "$alert_part" ]] || [[ -n "$cost_part" ]]; then
+            if [[ -n "$update_badge" ]]; then
+                printf " · ${update_badge}"
+            fi
+        elif [[ -n "$alert_part" ]] || [[ -n "$cost_part" ]] || [[ -n "$update_badge" ]]; then
             _line2=""
             [[ -n "$cost_display" ]] && _line2="💰 ${cost_display}"
             if [[ -n "$alert_part" ]]; then
                 [[ -n "$_line2" ]] && _line2="${_line2} · "
                 _line2="${_line2}${alert_part}"
+            fi
+            if [[ -n "$update_badge" ]]; then
+                [[ -n "$_line2" ]] && _line2="${_line2} · "
+                _line2="${_line2}${update_badge}"
             fi
             printf "\n  ${_line2}"
         fi
