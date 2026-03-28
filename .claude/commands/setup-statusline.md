@@ -140,13 +140,13 @@ launchctl list | grep -q com.claude-pulse.red-alert || launchctl load ~/Library/
 launchctl kickstart "gui/$(id -u)/com.claude-pulse.red-alert" >/dev/null 2>&1 || true
 ```
 
-Add SessionStart hooks — Read then Edit `~/.claude/settings.json`, merge into `hooks.SessionStart` array (don't clobber existing hooks):
+Add SessionStart hooks — Read then Edit `~/.claude/settings.json`, merge into `hooks.SessionStart` array (don't clobber existing hooks). Each entry MUST use the nested `hooks` array format required by the schema:
 
 ```json
 {"hooks":{"SessionStart":[
-  {"command":"~/.claude/update.sh >/dev/null 2>&1 &"},
-  {"command":"if [ -f ~/.local/state/claude-pulse/daemon_restart_requested ]; then rm -f ~/.local/state/claude-pulse/daemon_restart_requested; launchctl kickstart -k gui/$(id -u)/com.claude-pulse.red-alert 2>/dev/null; fi"},
-  {"command":"launchctl list | grep -q com.claude-pulse.red-alert || launchctl load ~/Library/LaunchAgents/com.claude-pulse.red-alert.plist 2>/dev/null; true"}
+  {"hooks":[{"type":"command","command":"~/.claude/update.sh >/dev/null 2>&1 &","timeout":5}]},
+  {"hooks":[{"type":"command","command":"if [ -f ~/.local/state/claude-pulse/daemon_restart_requested ]; then rm -f ~/.local/state/claude-pulse/daemon_restart_requested; launchctl kickstart -k gui/$(id -u)/com.claude-pulse.red-alert 2>/dev/null; fi","timeout":5}]},
+  {"hooks":[{"type":"command","command":"launchctl list | grep -q com.claude-pulse.red-alert || launchctl load ~/Library/LaunchAgents/com.claude-pulse.red-alert.plist 2>/dev/null; true","timeout":5}]}
 ]}}
 ```
 

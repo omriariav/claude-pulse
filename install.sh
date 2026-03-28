@@ -101,13 +101,13 @@ else
         jq --arg update_hook "$UPDATE_HOOK" --arg restart_hook "$RESTART_HOOK" '
             # Ensure hooks.SessionStart exists as an array
             .hooks.SessionStart //= [] |
-            # Add update hook if not already present
-            if (.hooks.SessionStart | map(select(.command == $update_hook)) | length) == 0 then
-                .hooks.SessionStart += [{"command": $update_hook}]
+            # Add update hook if not already present (nested hooks format required by schema)
+            if (.hooks.SessionStart | map(select(.hooks[]?.command == $update_hook)) | length) == 0 then
+                .hooks.SessionStart += [{"hooks": [{"type": "command", "command": $update_hook, "timeout": 5}]}]
             else . end |
             # Add restart hook if not already present
-            if (.hooks.SessionStart | map(select(.command == $restart_hook)) | length) == 0 then
-                .hooks.SessionStart += [{"command": $restart_hook}]
+            if (.hooks.SessionStart | map(select(.hooks[]?.command == $restart_hook)) | length) == 0 then
+                .hooks.SessionStart += [{"hooks": [{"type": "command", "command": $restart_hook, "timeout": 5}]}]
             else . end
         ' "$SETTINGS_FILE" > "$tmp_settings" && mv "$tmp_settings" "$SETTINGS_FILE"
 
