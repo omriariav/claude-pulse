@@ -65,6 +65,16 @@ Env vars: `CLAUDE_PULSE_DENSITY` (minimal/regular/heavy), `CLAUDE_PULSE_HIDE_COS
 - **Transcript structure**: User-typed prompts are NOT stored as plain text in `type: "user"` entries (those are mostly tool results). The `type: "assistant"` entries with `content[].type == "text"` contain the best topic signals
 - API call logic is extracted into reusable functions (`generate_name_via_api` in bash, `Get-ConversationName` in PowerShell) to avoid duplication
 
+### Dynamic tab title (v3.0.0)
+
+- Sets terminal tab title to conversation name via OSC escape sequence (`\033]0;...\007`)
+- Only fires when Claude Code doesn't provide its own `session_name` (avoids overwriting `/rename`)
+- Sanitizes control characters to prevent terminal escape injection
+- Deduped via `~/.cache/claude-pulse/.last_tab_title` — only writes when name changes
+- Uses delayed background write (300ms) to fire after Claude Code's own title-setting
+- Works across all modern terminals: Warp, iTerm2, WezTerm, Terminal.app, Kitty, Alacritty
+- Configurable: `CLAUDE_PULSE_TAB_TITLE=off` to disable (on by default)
+
 ### Red Alert feature
 
 - **Two-script architecture**: `red-alert-daemon.sh` polls the Pikud HaOref API in the background, writes state to `/tmp/red_alert_state.json`. `claude-pulse` reads this file (no network I/O in statusline).
@@ -96,14 +106,29 @@ bash tests/run_tests.sh
 RED_ALERT_MODE=mock echo '{"cwd":"/test","model":{"id":"claude-opus-4-6"},"context_window":{"total_input_tokens":50000,"total_output_tokens":5000,"context_window_size":200000}}' | ./claude-pulse
 ```
 
-### Version bumping checklist
+### OTA update system (v3.0.0)
 
-When releasing a new version, update ALL of these files:
-1. `claude-pulse` line 2 — version comment
-2. `claude-pulse.ps1` line 1 — version comment
-3. `README.md` — version badge, "New in vX.Y.Z" section, move previous version to "Previous Updates"
-4. `RELEASE.md` — add new release entry at the top
-5. Install: `cp claude-pulse ~/.claude/statusline-command.sh`
+- **`update.sh`**: Singleton-locked updater triggered by SessionStart hook. Checks GitHub releases (gh CLI for private repos, curl fallback), downloads tarball, verifies SHA256 checksum (fail-closed), validates scripts (syntax + shebang), applies atomically with backup/rollback.
+- **`release.sh`**: Builds release tarball, computes SHA256, uploads both as GitHub release assets. Validates version consistency, clean tree, no existing tag.
+- **Statusline badges**: `🔄 Updated to vX.Y.Z` (auto-applied) or `🔄 vX.Y.Z available` (notify mode). Read-only file checks, no network I/O.
+- **Security**: Domain pinning (github.com only), fail-closed checksums, `umask 077`, crash recovery via `apply_in_progress` marker, stale lock recovery (10 min TTL).
+- **Config**: `CLAUDE_PULSE_AUTO_UPDATE` — `auto` (default) or `notify`. `CLAUDE_PULSE_TAB_TITLE` — `on` (default) or `off`.
+
+### Release process
+
+Use `/release` skill or `./release.sh` directly. The skill enforces the full checklist.
+
+**Version bump files** (ALL must match):
+1. `claude-pulse` line 2 — `# claude-pulse vX.Y.Z:`
+2. `claude-pulse.ps1` line 1 — `# claude-pulse.ps1 vX.Y.Z:`
+3. `red-alert-daemon.sh` line 2 — `# red-alert-daemon.sh vX.Y.Z:`
+4. `update.sh` line 2 — `# claude-pulse update.sh vX.Y.Z:`
+
+**Documentation updates**:
+5. `README.md` — version references + release highlights
+6. `RELEASE.md` — add new release entry at the top
+
+**Publish**: `./release.sh` builds tarball + checksums, uploads to GitHub. OTA delivers to users automatically.
 
 ## Dependencies
 
