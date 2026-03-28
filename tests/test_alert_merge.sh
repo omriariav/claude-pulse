@@ -92,5 +92,31 @@ result8=$(build_state "clear2" "13" "all clear" '[]' '[]' "$((now9+5))" "$((now9
 pre_val=$(echo "$result8" | jq -r '.pre_alert')
 assert_equals "$pre_val" "null" "expired pre_alert not carried into all-clear"
 
+# test_pre_alert_cities_survive_repoll: merged cities persist when same ID is re-polled
+# This is the real-world bug: ID "760" merged with "750" (got Ramla), then "760" re-polled and lost Ramla
+now10=$(date +%s)
+rm -f "$STATE_FILE"
+write_state "$(build_state "m4" "1" "missiles" '["מטולה"]' '["Metula"]' "$now10" 0)"
+# First pre-alert (750) with Ramla → stored in pre_alert field
+write_state "$(build_state "pre750" "14" "pre" '["רמלה"]' '["Ramla"]' "$now10" 0)"
+# Different pre-alert (760) arrives → merges with 750, pre_alert now has Ramla+760's cities
+write_state "$(build_state "pre760" "14" "pre" '["חיפה"]' '["Haifa"]' "$((now10+5))" 0)"
+# Same ID (760) re-polled → should preserve Ramla from prior merge
+result9=$(build_state "pre760" "14" "pre" '["חיפה"]' '["Haifa"]' "$((now10+7))" 0)
+pre_cities=$(echo "$result9" | jq -r '.pre_alert.cities_en[]?' 2>/dev/null)
+assert_contains "$pre_cities" "Ramla" "re-poll same ID: Ramla preserved after merge with 750"
+assert_contains "$pre_cities" "Haifa" "re-poll same ID: Haifa still present"
+
+# test_main_alert_cities_survive_repoll: same bug for main alert path
+now11=$(date +%s)
+rm -f "$STATE_FILE"
+write_state "$(build_state "wave_a" "1" "missiles" '["תל אביב"]' '["Tel Aviv"]' "$now11" 0)"
+write_state "$(build_state "wave_b" "1" "missiles" '["חיפה"]' '["Haifa"]' "$((now11+3))" 0)"
+# wave_b re-polled → should keep Tel Aviv from prior merge
+result10=$(build_state "wave_b" "1" "missiles" '["חיפה"]' '["Haifa"]' "$((now11+5))" 0)
+main_cities=$(echo "$result10" | jq -r '.cities_en[]?' 2>/dev/null)
+assert_contains "$main_cities" "Tel Aviv" "re-poll main: Tel Aviv preserved after merge with wave_a"
+assert_contains "$main_cities" "Haifa" "re-poll main: Haifa still present"
+
 cleanup
 report

@@ -1,5 +1,44 @@
 # Release Notes
 
+## v3.0.0 - Adaptive Density Statusline
+
+**Released:** March 27, 2026
+
+### What's New
+
+- **Three density tiers** — auto-detected from terminal width, overridable with `CLAUDE_PULSE_DENSITY`:
+  - **Minimal** (< 100 cols): Single line, no bar, abbreviated model, `│` separators
+  - **Regular** (100–159 cols): Two lines, 10-char bare bar, emoji dividers, smart truncation
+  - **Heavy** (≥ 160 cols): Two lines, 20-char bracketed bar, ` · ` dot separators, full detail
+- **ANSI RGB color palette** — richer colors using `$'...'` bash literals
+- **Session cost display** — `💰 $18` in heavy mode (whole dollars). Hide with `CLAUDE_PULSE_HIDE_COST=1` for Max/Pro users.
+- **`/setup-statusline` command** — unified interactive onboarding: density preview (Ctrl+O), cost toggle, Red Alert config
+- **`/uninstall-statusline` command** — full teardown of scripts, daemon, and settings
+- **Aligned line 2** — rate limits and alerts stack visually under line 1 segments
+
+### What's Fixed
+
+- **Line 1 overflow** — long branch names + full CWD paths no longer wrap and bleed into Claude Code UI
+- **City accumulation on re-poll** — merged cities preserved when daemon re-polls same alert ID
+
+### Upgrade from v2.x
+
+```bash
+cd claude-pulse
+git pull
+./install.sh
+```
+
+Auto-detection means v3.0 works immediately with no config. To customize density, cost display, or Red Alert, run `/setup-statusline` inside Claude Code.
+
+### Breaking Changes
+
+- Visual output format changed (3 tiers replace the single fixed layout)
+- `/setup-red-alert` removed — use `/setup-statusline` instead
+- Color codes changed from basic ANSI to RGB (tests updated)
+
+---
+
 ## v2.5.2 - Pre-Alert Persistence + Hook Fix
 
 **Released:** March 27, 2026

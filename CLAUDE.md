@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-claude-pulse is a bash script that displays real-time token usage in the Claude Code status line. It shows usage as `🧠 72k/200k (36%) · 🤖 Opus 4.6 · 💬 "Topic Name"` with color-coded warnings (green/yellow/red based on percentage thresholds).
+claude-pulse is a bash script that displays real-time token usage in the Claude Code status line with adaptive density (minimal/regular/heavy) that auto-detects terminal width. Color-coded warnings (green/yellow/red based on percentage thresholds).
 
 ## Architecture
 
@@ -24,7 +24,7 @@ The project consists of:
 4. Calculates percentage and applies color coding (green <50%, yellow 50-79%, red 80%+)
 5. Converts model ID to friendly name (e.g., "Sonnet 4.5", "Opus 4.6", "Haiku 3.5")
 6. Looks up or infers a conversation name (via AI API or fallback)
-7. Outputs single line: token usage, model name, conversation name, and current working directory
+7. Outputs density-aware statusline (minimal: 1 line, regular/heavy: 2 lines)
 
 ### Key implementation details
 
@@ -34,6 +34,21 @@ The project consists of:
 - >100% is normal when context exceeds limit - Claude Code will auto-compact
 - Context limit defaults to 200k but is dynamically overridden by `context_window.context_window_size` from JSON input (handles 1M context for Opus 4.6 etc.)
 - Auto-detects `tac` vs `tail -r` for Linux/macOS compatibility
+- ANSI RGB color palette using `$'...'` bash literals (not double-quoted `"\033..."`)
+
+### Adaptive density (v3.0.0)
+
+Three tiers auto-detected from terminal width, overridable with `CLAUDE_PULSE_DENSITY` env var:
+
+- **Minimal** (< 100 cols): Single line, `│` separators, no bar, abbreviated model (`Son4.6`), rates + alerts inline
+- **Regular** (100–159 cols): Two lines, emoji dividers (double-space), 10-char bare bar, `%2d` rate padding for alignment
+- **Heavy** (≥ 160 cols): Two lines, ` · ` dot separators, 20-char bracketed bar, full branch, optional session cost
+
+Key alignment rules:
+- **Regular** line 2: `%2d` for 5h, `%2d` for 7d — `🟢` lands under `🤖`
+- **Heavy** line 2: `%2d` for 5h, `%3d` for 7d, `%4s` for cost — `·` before `🟢` stacks with `·` after context `%`
+
+Env vars: `CLAUDE_PULSE_DENSITY` (minimal/regular/heavy), `CLAUDE_PULSE_HIDE_COST` (set to hide `💰` in heavy mode — recommended for Max/Pro users)
 
 ### Model detection
 
@@ -49,6 +64,16 @@ The project consists of:
 - **Key learning**: `sessions-index.json` only gets populated after a session ends or user runs `/rename` — for active sessions, the transcript fallback is essential
 - **Transcript structure**: User-typed prompts are NOT stored as plain text in `type: "user"` entries (those are mostly tool results). The `type: "assistant"` entries with `content[].type == "text"` contain the best topic signals
 - API call logic is extracted into reusable functions (`generate_name_via_api` in bash, `Get-ConversationName` in PowerShell) to avoid duplication
+
+### Dynamic tab title (v3.0.0)
+
+- Sets terminal tab title to conversation name via OSC escape sequence (`\033]0;...\007`)
+- Only fires when Claude Code doesn't provide its own `session_name` (avoids overwriting `/rename`)
+- Sanitizes control characters to prevent terminal escape injection
+- Deduped via `~/.cache/claude-pulse/.last_tab_title` — only writes when name changes
+- Uses delayed background write (300ms) to fire after Claude Code's own title-setting
+- Works across all modern terminals: Warp, iTerm2, WezTerm, Terminal.app, Kitty, Alacritty
+- Configurable: `CLAUDE_PULSE_TAB_TITLE=off` to disable (on by default)
 
 ### Red Alert feature
 
@@ -81,14 +106,29 @@ bash tests/run_tests.sh
 RED_ALERT_MODE=mock echo '{"cwd":"/test","model":{"id":"claude-opus-4-6"},"context_window":{"total_input_tokens":50000,"total_output_tokens":5000,"context_window_size":200000}}' | ./claude-pulse
 ```
 
-### Version bumping checklist
+### OTA update system (v3.0.0)
 
-When releasing a new version, update ALL of these files:
-1. `claude-pulse` line 2 — version comment
-2. `claude-pulse.ps1` line 1 — version comment
-3. `README.md` — version badge, "New in vX.Y.Z" section, move previous version to "Previous Updates"
-4. `RELEASE.md` — add new release entry at the top
-5. Install: `cp claude-pulse ~/.claude/statusline-command.sh`
+- **`update.sh`**: Singleton-locked updater triggered by SessionStart hook. Checks GitHub releases (gh CLI for private repos, curl fallback), downloads tarball, verifies SHA256 checksum (fail-closed), validates scripts (syntax + shebang), applies atomically with backup/rollback.
+- **`release.sh`**: Builds release tarball, computes SHA256, uploads both as GitHub release assets. Validates version consistency, clean tree, no existing tag.
+- **Statusline badges**: `🔄 Updated to vX.Y.Z` (auto-applied) or `🔄 vX.Y.Z available` (notify mode). Read-only file checks, no network I/O.
+- **Security**: Domain pinning (github.com only), fail-closed checksums, `umask 077`, crash recovery via `apply_in_progress` marker, stale lock recovery (10 min TTL).
+- **Config**: `CLAUDE_PULSE_AUTO_UPDATE` — `auto` (default) or `notify`. `CLAUDE_PULSE_TAB_TITLE` — `on` (default) or `off`.
+
+### Release process
+
+Use `/release` skill or `./release.sh` directly. The skill enforces the full checklist.
+
+**Version bump files** (ALL must match):
+1. `claude-pulse` line 2 — `# claude-pulse vX.Y.Z:`
+2. `claude-pulse.ps1` line 1 — `# claude-pulse.ps1 vX.Y.Z:`
+3. `red-alert-daemon.sh` line 2 — `# red-alert-daemon.sh vX.Y.Z:`
+4. `update.sh` line 2 — `# claude-pulse update.sh vX.Y.Z:`
+
+**Documentation updates**:
+5. `README.md` — version references + release highlights
+6. `RELEASE.md` — add new release entry at the top
+
+**Publish**: `./release.sh` builds tarball + checksums, uploads to GitHub. OTA delivers to users automatically.
 
 ## Dependencies
 

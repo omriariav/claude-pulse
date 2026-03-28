@@ -64,16 +64,19 @@ else
         exit 1
     fi
 
-    # Copy the bash script and daemon
+    # Copy the bash script, daemon, and updater
     cp claude-pulse "$CLAUDE_DIR/statusline-command.sh"
     chmod +x "$CLAUDE_DIR/statusline-command.sh"
     cp red-alert-daemon.sh "$CLAUDE_DIR/red-alert-daemon.sh"
     chmod +x "$CLAUDE_DIR/red-alert-daemon.sh"
+    cp update.sh "$CLAUDE_DIR/update.sh"
+    chmod +x "$CLAUDE_DIR/update.sh"
     mkdir -p "$CLAUDE_DIR/static"
     cp static/*.m4a "$CLAUDE_DIR/static/" 2>/dev/null || true
 
     echo "claude-pulse installed to $CLAUDE_DIR/statusline-command.sh"
     echo "red-alert-daemon installed to $CLAUDE_DIR/red-alert-daemon.sh"
+    echo "update.sh installed to $CLAUDE_DIR/update.sh"
     echo ""
 
     # Configure statusline in settings.json
@@ -82,11 +85,52 @@ else
         echo '{}' > "$SETTINGS_FILE"
     fi
 
-    # Add statusLine command
+    # Configure statusline + OTA hooks in settings.json (merge, don't clobber)
     if command -v jq &>/dev/null; then
         tmp_settings="${SETTINGS_FILE}.$$"
-        jq '.statusLine = {"type": "command", "command": "~/.claude/statusline-command.sh"}' "$SETTINGS_FILE" > "$tmp_settings" && mv "$tmp_settings" "$SETTINGS_FILE"
+
+        # Add statusLine command
+        jq '.statusLine = {"type": "command", "command": "~/.claude/statusline-command.sh"}' \
+            "$SETTINGS_FILE" > "$tmp_settings" && mv "$tmp_settings" "$SETTINGS_FILE"
+
+        # Add SessionStart hooks (OTA update check + daemon restart marker)
+        # Merge with existing hooks — don't clobber user's custom hooks
+        UPDATE_HOOK="~/.claude/update.sh >/dev/null 2>&1 &"
+        RESTART_HOOK="if [ -f ~/.local/state/claude-pulse/daemon_restart_requested ]; then rm -f ~/.local/state/claude-pulse/daemon_restart_requested; launchctl kickstart -k gui/\$(id -u)/com.claude-pulse.red-alert 2>/dev/null; fi"
+
+        jq --arg update_hook "$UPDATE_HOOK" --arg restart_hook "$RESTART_HOOK" '
+            # Ensure hooks.SessionStart exists as an array
+            .hooks.SessionStart //= [] |
+            # Add update hook if not already present
+            if (.hooks.SessionStart | map(select(.command == $update_hook)) | length) == 0 then
+                .hooks.SessionStart += [{"command": $update_hook}]
+            else . end |
+            # Add restart hook if not already present
+            if (.hooks.SessionStart | map(select(.command == $restart_hook)) | length) == 0 then
+                .hooks.SessionStart += [{"command": $restart_hook}]
+            else . end
+        ' "$SETTINGS_FILE" > "$tmp_settings" && mv "$tmp_settings" "$SETTINGS_FILE"
+
         echo "Statusline configured in settings.json"
+        echo "OTA update hooks registered"
+    fi
+
+    # Update preference
+    echo ""
+    echo "Update mode:"
+    echo "  auto   — Updates applied automatically on session start (default)"
+    echo "  notify — Show badge when update available, apply manually with /update-pulse"
+    echo ""
+    read -rp "Update mode [auto]: " update_mode
+    update_mode="${update_mode:-auto}"
+    if [[ "$update_mode" == "notify" ]]; then
+        if command -v jq &>/dev/null; then
+            tmp_settings="${SETTINGS_FILE}.$$"
+            jq '.env.CLAUDE_PULSE_AUTO_UPDATE = "notify"' "$SETTINGS_FILE" > "$tmp_settings" && mv "$tmp_settings" "$SETTINGS_FILE"
+            echo "Update mode set to: notify"
+        fi
+    else
+        echo "Update mode set to: auto (default)"
     fi
 
     # macOS: install launchd service for the daemon
@@ -137,8 +181,8 @@ PLIST
     fi
 
     echo ""
-    echo "To configure Red Alert notifications, run:  /setup-red-alert"
-    echo "Or restart Claude Code to use the statusline as-is."
+    echo "To customize density, cost display, and Red Alert:  /setup-statusline"
+    echo "Or just start using Claude Code — the statusline works immediately."
 fi
 
 echo ""

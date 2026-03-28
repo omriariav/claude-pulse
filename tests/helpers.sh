@@ -30,7 +30,7 @@ run_pulse() {
     if [[ -n "$extra_json" ]]; then
         json=$(echo "$json" | jq ". + $extra_json")
     fi
-    echo "$json" | "$SCRIPT_DIR/claude-pulse" 2>/dev/null
+    echo "$json" | CLAUDE_PULSE_DENSITY="${CLAUDE_PULSE_DENSITY:-heavy}" "$SCRIPT_DIR/claude-pulse" 2>/dev/null
 }
 
 # Fake a running daemon (write current PID to PID file so indicator shows 🔔 not 🔕)

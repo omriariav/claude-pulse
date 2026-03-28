@@ -1,5 +1,5 @@
 #!/bin/bash
-# red-alert-daemon.sh: Background daemon for Pikud HaOref alert monitoring
+# red-alert-daemon.sh v3.0.0: Background daemon for Pikud HaOref alert monitoring
 # Polls the official alert API every 2 seconds and writes state to disk
 # Supports: normal mode (API), all mode (API, no filter), mock mode (offline testing)
 
@@ -8,6 +8,8 @@ mkdir -p "$STATE_DIR" 2>/dev/null
 STATE_FILE="${STATE_DIR}/red_alert_state.json"
 PID_FILE="${STATE_DIR}/red_alert_daemon.pid"
 LOG_FILE="${STATE_DIR}/red_alert_daemon.log"
+VERSION_FILE="${STATE_DIR}/daemon_version"
+DAEMON_VERSION=$(sed -n '2s/.*v\([0-9.]*\).*/\1/p' "$0" 2>/dev/null)
 POLL_INTERVAL="${RED_ALERT_POLL_INTERVAL:-2}"
 API_URL="https://www.oref.org.il/warningMessages/alert/alerts.json"
 
@@ -30,10 +32,10 @@ log() {
 
 cleanup() {
     log "Daemon stopping (PID $$)"
-    # Only remove PID file and lock if they're ours
+    # Only remove PID/version files and lock if they're ours
     current_pid=$(cat "$PID_FILE" 2>/dev/null)
     if [[ "$current_pid" == "$$" ]]; then
-        rm -f "$PID_FILE"
+        rm -f "$PID_FILE" "$VERSION_FILE"
         rm -rf "${STATE_DIR}/daemon.lock"
     fi
     exit 0
@@ -59,6 +61,14 @@ build_state() {
         prev_first=$(jq -r '.first_seen_unix // 0' "$STATE_FILE" 2>/dev/null)
         if [[ "$prev_id" == "$id" ]] && [[ "$prev_first" != "0" ]] && [[ "$prev_first" != "null" ]]; then
             first_seen="$prev_first"
+            # Preserve accumulated cities from prior merges (re-poll of same ID must not lose them)
+            local _prev_du _now_main
+            _prev_du=$(jq -r '.display_until_unix // 0' "$STATE_FILE" 2>/dev/null)
+            _now_main=$(date +%s)
+            if [[ "$_prev_du" != "0" ]] && (( _prev_du >= _now_main )); then
+                cities=$(jq -s '.[0] + .[1] | unique' <(echo "$cities") <(jq '.cities // []' "$STATE_FILE") 2>/dev/null)
+                cities_en=$(jq -s '.[0] + .[1] | unique' <(echo "$cities_en") <(jq '.cities_en // []' "$STATE_FILE") 2>/dev/null)
+            fi
         fi
     fi
     # Display until: max(last_seen + 60, first_seen + 180) for active alerts
@@ -107,10 +117,18 @@ build_state() {
             local existing_pre_id
             existing_pre_id=$(jq -r '.pre_alert.alert_id // ""' "$STATE_FILE" 2>/dev/null)
             if [[ "$existing_pre_id" == "$id" ]]; then
-                local existing_pre_first
+                local existing_pre_first existing_pre_du_early
                 existing_pre_first=$(jq -r '.pre_alert.first_seen_unix // 0' "$STATE_FILE" 2>/dev/null)
+                existing_pre_du_early=$(jq -r '.pre_alert.display_until_unix // 0' "$STATE_FILE" 2>/dev/null)
                 if [[ "$existing_pre_first" != "0" ]] && [[ "$existing_pre_first" != "null" ]]; then
                     pre_first_seen="$existing_pre_first"
+                fi
+                # Preserve accumulated cities from prior merges (re-poll of same ID must not lose them)
+                local _now_early
+                _now_early=$(date +%s)
+                if [[ "$existing_pre_du_early" != "0" ]] && (( existing_pre_du_early >= _now_early )); then
+                    cities=$(jq -s '.[0] + .[1] | unique' <(echo "$cities") <(jq -c '.pre_alert.cities // []' "$STATE_FILE") 2>/dev/null)
+                    cities_en=$(jq -s '.[0] + .[1] | unique' <(echo "$cities_en") <(jq -c '.pre_alert.cities_en // []' "$STATE_FILE") 2>/dev/null)
                 fi
             fi
             local pre_display_until
@@ -359,7 +377,8 @@ fi
 # We hold the lock — write PID immediately (inside lock dir + state dir)
 echo $$ > "$LOCK_PID"
 echo $$ > "$PID_FILE"
-log "Daemon started (PID $$, mode=${RED_ALERT_MODE:-normal})"
+[[ -n "$DAEMON_VERSION" ]] && echo "$DAEMON_VERSION" > "$VERSION_FILE"
+log "Daemon started (PID $$, v${DAEMON_VERSION:-unknown}, mode=${RED_ALERT_MODE:-normal})"
 
 mock_index=0
 
