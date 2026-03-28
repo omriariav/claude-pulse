@@ -50,10 +50,8 @@ else
     density="regular"
 fi
 
-# CWD shortening by density
-case "$density" in
-    minimal|regular) short_cwd="$(basename "$cwd")" ;;
-    heavy)           short_cwd="${cwd/#$HOME/~}" ;;
+# CWD shortening — basename for all densities (full path overflows terminal)
+short_cwd="$(basename "$cwd")"
 esac
 
 # Convert model ID to friendly name
