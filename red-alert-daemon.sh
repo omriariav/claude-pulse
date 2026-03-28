@@ -388,10 +388,10 @@ DAEMON_START_TIME=$(date +%s)
 PGREP_MISS_COUNT=0
 PGREP_MISS_THRESHOLD=3
 
-# API failure tracking — back off and stop after too many consecutive failures
+# API failure tracking — exponential backoff, daemon never dies
+# Tiers: 1-10 = 2s, 11+ = 10s (capped so main loop liveness checks run)
+# First valid JSON response resets to normal 2s polling
 API_FAIL_COUNT=0
-API_FAIL_MAX=30        # stop polling after 30 consecutive failures (~4-6 min with backoff)
-API_BACKOFF_AFTER=10   # start backing off (10s interval) after 10 failures
 
 # Touch heartbeat on startup to prevent immediate exit from stale file
 touch "$HEARTBEAT_FILE" 2>/dev/null
@@ -469,32 +469,34 @@ while true; do
     # Strip UTF-8 BOM and null bytes
     response=$(echo "$response" | sed 's/^\xEF\xBB\xBF//' | tr -d '\0')
 
-    # Track consecutive failures — empty response, invalid JSON, or non-alert JSON (e.g. error payload)
+    # Track consecutive failures — only empty response or invalid JSON counts as failure
+    # Valid JSON (even without .cat) means the API is reachable — reset counter
     _is_failure=false
     if [[ -z "$response" ]] || ! echo "$response" | jq empty 2>/dev/null; then
         _is_failure=true
-    elif ! echo "$response" | jq -e '.cat // empty' &>/dev/null; then
-        # Valid JSON but not an alert object (could be {} or {"error":"..."} from geo-block)
-        # Only count as failure if we've never seen a real alert (avoids false positives during quiet periods)
-        if (( API_FAIL_COUNT > 0 )); then
-            _is_failure=true
-        fi
+    else
+        # Valid JSON response — API is reachable, reset backoff
+        API_FAIL_COUNT=0
     fi
 
     if [[ "$_is_failure" == "true" ]]; then
         ((API_FAIL_COUNT++))
-        if (( API_FAIL_COUNT >= API_FAIL_MAX )); then
-            log "API unreachable after ${API_FAIL_COUNT} consecutive failures (non-Israeli IP?). Stopping."
-            exit 0
-        fi
-        if (( API_FAIL_COUNT >= API_BACKOFF_AFTER )); then
-            sleep 10
-        else
+        # Exponential backoff — daemon stays alive, self-heals on network recovery
+        # Sleep here then continue to top of main loop where liveness checks run
+        if (( API_FAIL_COUNT <= 10 )); then
             sleep "$POLL_INTERVAL"
+        elif (( API_FAIL_COUNT <= 20 )); then
+            sleep 10
+        elif (( API_FAIL_COUNT <= 30 )); then
+            sleep 10  # cap at 10s per iteration; 30 iterations ≈ 5 min total
+        else
+            if (( API_FAIL_COUNT == 31 )); then
+                log "API unreachable, entering slow backoff (will resume on network recovery)"
+            fi
+            sleep 10  # stay at 10s — main loop liveness checks run every iteration
         fi
         continue
     fi
-    API_FAIL_COUNT=0
 
     # Check if response has alert data
     cat_val=$(echo "$response" | jq -r '.cat // ""' 2>/dev/null)
