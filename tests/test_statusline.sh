@@ -128,5 +128,55 @@ assert_contains "$out_low" "██████░" "progress bar partially fille
 out_over=$(echo '{"cwd":"/test","model":{"id":"claude-opus-4-6"},"context_window":{"total_input_tokens":250000,"total_output_tokens":0,"context_window_size":200000}}' | "$PULSE" 2>/dev/null)
 assert_contains "$out_over" "████████████████████]" "progress bar full at >100%"
 
+# --- Git diff stats tests ---
+echo ""
+echo "Testing git diff stats..."
+
+# Create temp git repo with known changes
+_diff_dir=$(mktemp -d)
+git -C "$_diff_dir" init -q
+echo "hello" > "$_diff_dir/file1.txt"
+echo "world" > "$_diff_dir/file2.txt"
+git -C "$_diff_dir" add . && git -C "$_diff_dir" commit -q -m "init"
+echo "hello modified" > "$_diff_dir/file1.txt"
+echo "new line" >> "$_diff_dir/file2.txt"
+echo "brand new" > "$_diff_dir/file3.txt"
+git -C "$_diff_dir" add "$_diff_dir/file3.txt"
+
+_diff_json="{\"cwd\":\"$_diff_dir\",\"model\":{\"id\":\"claude-opus-4-6\"},\"context_window\":{\"total_input_tokens\":50000,\"total_output_tokens\":5000,\"context_window_size\":200000}}"
+
+# test_diff_shown: dirty repo shows diff stats
+out_diff=$(echo "$_diff_json" | CLAUDE_PULSE_DENSITY=heavy "$PULSE" 2>/dev/null)
+assert_contains "$out_diff" "📝" "diff stats shown when dirty"
+assert_contains "$out_diff" "files" "diff stats shows file count"
+
+# test_diff_colors: green insertions, red deletions
+assert_contains "$out_diff" "38;2;80;250;123m" "diff insertions colored green"
+assert_contains "$out_diff" "38;2;255;85;85m" "diff deletions colored red"
+assert_contains "$out_diff" "38;2;139;233;253m" "diff file count colored cyan"
+
+# test_diff_clean: clean tree hides segment
+_clean_dir=$(mktemp -d)
+git -C "$_clean_dir" init -q
+echo "hello" > "$_clean_dir/file1.txt"
+git -C "$_clean_dir" add . && git -C "$_clean_dir" commit -q -m "init"
+out_clean=$(echo "{\"cwd\":\"$_clean_dir\",\"model\":{\"id\":\"claude-opus-4-6\"},\"context_window\":{\"total_input_tokens\":50000,\"total_output_tokens\":5000,\"context_window_size\":200000}}" | CLAUDE_PULSE_DENSITY=heavy "$PULSE" 2>/dev/null)
+assert_not_contains "$out_clean" "📝" "diff stats hidden when clean"
+
+# test_diff_hide_env: CLAUDE_PULSE_HIDE_DIFF suppresses segment
+out_hidden=$(echo "$_diff_json" | CLAUDE_PULSE_DENSITY=heavy CLAUDE_PULSE_HIDE_DIFF=1 "$PULSE" 2>/dev/null)
+assert_not_contains "$out_hidden" "📝" "CLAUDE_PULSE_HIDE_DIFF hides diff stats"
+
+# test_diff_minimal: compact format
+out_min=$(echo "$_diff_json" | CLAUDE_PULSE_DENSITY=minimal "$PULSE" 2>/dev/null)
+assert_contains "$out_min" "f" "diff stats shows file count in minimal"
+assert_not_contains "$out_min" "📝" "minimal mode has no pencil emoji"
+
+# test_diff_regular: emoji format
+out_reg=$(echo "$_diff_json" | CLAUDE_PULSE_DENSITY=regular "$PULSE" 2>/dev/null)
+assert_contains "$out_reg" "📝" "regular mode shows pencil emoji"
+
+rm -rf "$_diff_dir" "$_clean_dir"
+
 cleanup
 report

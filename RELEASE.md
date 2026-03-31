@@ -1,5 +1,20 @@
 # Release Notes
 
+## v3.1.0 - Git Diff Stats
+
+**Released:** March 31, 2026
+
+### What's New
+
+- **Git diff stats in statusline** — shows files changed, insertions (+green), and deletions (-red) with cyan file count. Density-aware: minimal (`3f +45 -12`), regular (`📝 3f +45 -12`), heavy (`📝 3 files +45 -12` on line 2 with column alignment)
+- **`CLAUDE_PULSE_HIDE_DIFF` env var** — set to hide the diff stats segment
+- **Minimal branch name** — increased from 10 to 18 chars for better readability
+- **Heavy mode column alignment** — model section (line 1) and alert section (line 2) are padded so `·` separators stack vertically
+
+### Bug Fixes
+
+- **Missile sound cooldown** — increased from 40s to 60s to prevent repeated plays during multi-wave sirens
+
 ## v3.0.2 - API Failure Backoff
 
 **Released:** March 29, 2026

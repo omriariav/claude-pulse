@@ -1,4 +1,4 @@
-# claude-pulse.ps1 v3.0.2: Real-time token usage for Claude Code status line (Windows)
+# claude-pulse.ps1 v3.1.0: Real-time token usage for Claude Code status line (Windows)
 # Uses billing API (transcript) for accurate FULL context usage
 # Falls back to native context_window when transcript unavailable
 # Displays current model name and AI-generated conversation names
@@ -253,6 +253,29 @@ try {
     $branch = git -C $cwd branch --show-current 2>$null
 } catch {}
 
+# Git diff stats (files changed, insertions, deletions)
+$diff_segment = ""
+$is_git_repo = $false
+try { $is_git_repo = (git -C $cwd rev-parse --is-inside-work-tree 2>$null) -eq "true" } catch {}
+if ($is_git_repo -and -not $env:CLAUDE_PULSE_HIDE_DIFF) {
+    $diff_stat = & { $env:LC_ALL = "C"; git -C $cwd diff HEAD --shortstat 2>$null }
+    if ($diff_stat) {
+        $df = 0; $di = 0; $dd = 0
+        if ($diff_stat -match '(\d+) file') { $df = [int]$Matches[1] }
+        if ($diff_stat -match '(\d+) insertion') { $di = [int]$Matches[1] }
+        if ($diff_stat -match '(\d+) deletion') { $dd = [int]$Matches[1] }
+        if ($df -gt 0) {
+            $cyan = "`e[38;2;139;233;253m"
+            $fl = if ($df -eq 1) { "file" } else { "files" }
+            $plus = if ($di -gt 0) { "`e[38;2;80;250;123m+$di`e[0m" } else { "" }
+            $minus = if ($dd -gt 0) { "`e[38;2;255;85;85m-$dd`e[0m" } else { "" }
+            $ch = @($plus, $minus) | Where-Object { $_ } | Join-String -Separator " "
+            $ch_suffix = if ($ch) { " $ch" } else { "" }
+            $diff_segment = " · 📝 ${cyan}${df} ${fl}`e[0m${ch_suffix}"
+        }
+    }
+}
+
 # Git branch + PR number segment
 $pr_segment = ""
 if ($branch) {
@@ -422,4 +445,4 @@ if ($env:RED_ALERT_CITIES -or $env:RED_ALERT_MODE) {
 }
 
 # Output format: "🧠 [████░░] 72% · 🤖 Model · 💬 Topic · 🌿 branch 📁 /path"
-Write-Host "${color}🧠 $bar ${percent}%${reset} · 🤖 ${model_name} (${context_label})${name_segment}${pr_segment} 📁 ${cwd}${alert_segment}"
+Write-Host "${color}🧠 $bar ${percent}%${reset} · 🤖 ${model_name} (${context_label})${name_segment}${pr_segment}${diff_segment} · 📁 ${cwd}${alert_segment}"
