@@ -902,7 +902,12 @@ case "$density" in
                 _line2="${_line2}${update_badge}"
             fi
             if [[ -n "$diff_segment" ]]; then
-                _line2="${_line2}${diff_segment}"
+                if [[ -n "$_line2" ]]; then
+                    _line2="${_line2}${diff_segment}"
+                else
+                    # Strip leading " · " when diff is first item on line 2
+                    _line2="${diff_segment# · }"
+                fi
             fi
             printf "\n  ${_line2}"
         fi
