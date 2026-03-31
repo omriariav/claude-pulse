@@ -383,16 +383,18 @@ if (( diff_files > 0 )); then
         _changes="$_minus"
     fi
 
+    _changes_suffix="${_changes:+ $_changes}"
+
     case "$density" in
         minimal)
-            diff_segment=" ${SEP} ${C_CYAN}${diff_files}f${C_RESET} ${_changes}"
+            diff_segment=" ${SEP} ${C_CYAN}${diff_files}f${C_RESET}${_changes_suffix}"
             ;;
         regular)
-            diff_segment="  📝 ${C_CYAN}${diff_files}f${C_RESET} ${_changes}"
+            diff_segment="  📝 ${C_CYAN}${diff_files}f${C_RESET}${_changes_suffix}"
             ;;
         heavy)
             _fl="files"; (( diff_files == 1 )) && _fl="file"
-            diff_segment=" · 📝 ${C_CYAN}${diff_files} ${_fl}${C_RESET} ${_changes}"
+            diff_segment=" · 📝 ${C_CYAN}${diff_files} ${_fl}${C_RESET}${_changes_suffix}"
             ;;
     esac
 fi
@@ -815,7 +817,7 @@ case "$density" in
         if [[ -n "$branch" ]]; then
             printf "${pr_segment}${diff_segment}"
         else
-            printf " ${SEP} ${short_cwd}"
+            printf " ${SEP} ${short_cwd}${diff_segment}"
         fi
         if [[ -n "$rate_5h" ]]; then
             printf " ${SEP} ⚡${rate_5h_color}5h:%2d%%${reset}" "$rate_5h_int"
