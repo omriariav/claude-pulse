@@ -356,13 +356,13 @@ fi
 diff_files=0
 diff_ins=0
 diff_del=0
-if [[ -n "$branch" ]] && [[ -z "$CLAUDE_PULSE_HIDE_DIFF" ]]; then
+if [[ -z "$CLAUDE_PULSE_HIDE_DIFF" ]] && git -C "$cwd" rev-parse --is-inside-work-tree &>/dev/null; then
     diff_stat=$(LC_ALL=C git -C "$cwd" diff HEAD --shortstat 2>/dev/null)
     if [[ -n "$diff_stat" ]]; then
-        diff_files=$(echo "$diff_stat" | sed -n 's/.*\([0-9][0-9]*\) file.*/\1/p')
-        diff_ins=$(echo "$diff_stat" | sed -n 's/.*\([0-9][0-9]*\) insertion.*/\1/p')
-        diff_del=$(echo "$diff_stat" | sed -n 's/.*\([0-9][0-9]*\) deletion.*/\1/p')
-        : "${diff_files:=0}" "${diff_ins:=0}" "${diff_del:=0}"
+        # Bash regex — no sed subprocesses, handles multi-digit numbers correctly
+        [[ $diff_stat =~ ([0-9]+)\ file ]] && diff_files="${BASH_REMATCH[1]}"
+        [[ $diff_stat =~ ([0-9]+)\ insertion ]] && diff_ins="${BASH_REMATCH[1]}"
+        [[ $diff_stat =~ ([0-9]+)\ deletion ]] && diff_del="${BASH_REMATCH[1]}"
     fi
 fi
 
@@ -373,11 +373,19 @@ if (( diff_files > 0 )); then
     _minus=""
     (( diff_ins > 0 )) && _plus="${C_GREEN}+${diff_ins}${C_RESET}"
     (( diff_del > 0 )) && _minus="${C_RED}-${diff_del}${C_RESET}"
-    _changes="${_plus:+$_plus}${_minus:+ $_minus}"
+    # Join with space, no leading space for deletion-only case
+    _changes=""
+    if [[ -n "$_plus" ]] && [[ -n "$_minus" ]]; then
+        _changes="${_plus} ${_minus}"
+    elif [[ -n "$_plus" ]]; then
+        _changes="$_plus"
+    else
+        _changes="$_minus"
+    fi
 
     case "$density" in
         minimal)
-            diff_segment=" ${SEP} ${C_CYAN}${diff_files}f${C_RESET}${_changes:+ $_changes}"
+            diff_segment=" ${SEP} ${C_CYAN}${diff_files}f${C_RESET} ${_changes}"
             ;;
         regular)
             diff_segment="  📝 ${C_CYAN}${diff_files}f${C_RESET} ${_changes}"
@@ -848,7 +856,11 @@ case "$density" in
         # Col 2 alignment: model section (line 1) ↔ alert section (line 2) — pad shorter to match
         _col2_model="🤖 ${model_name} (${context_label})"
         _col2_model_len=${#_col2_model}
-        _col2_alert_clean=$(printf '%s' "${alert_part}" | sed $'s/\033\[[0-9;]*m//g' | sed $'s/\033\\[38;2;[0-9;]*m//g')
+        # Strip ANSI codes via bash parameter expansion (no subprocess)
+        _col2_alert_clean="${alert_part}"
+        while [[ "$_col2_alert_clean" =~ $'\033'\\[[0-9\;]*m ]]; do
+            _col2_alert_clean="${_col2_alert_clean//${BASH_REMATCH[0]}/}"
+        done
         _col2_alert_len=${#_col2_alert_clean}
         _col2_pad_model=0
         _col2_pad_alert=0
