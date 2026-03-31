@@ -1,6 +1,6 @@
 # claude-pulse
 
-> Real-time token usage monitoring for Claude Code status line | **v3.0.2**
+> Real-time token usage monitoring for Claude Code status line | **v3.1.0**
 
 **claude-pulse** displays your current Claude Code token usage directly in your status line, helping you stay aware of context consumption without running `/context` manually.
 
@@ -18,6 +18,7 @@
 - ✅ **Model display** - Shows which Claude model you're using (e.g., "Sonnet 4.5", "Opus 4.6")
 - ✅ **Conversation names** - AI-generated short names for easy session identification
 - ✅ **Git branch + PR** - Shows current branch and open PR number
+- ✅ **Git diff stats** - Files changed, insertions (+green), deletions (-red) with cyan file count
 - ✅ **Session cost** - Shows cumulative API cost in heavy mode (optional, for pay-per-use plans)
 - ✅ **Rate limits** - 5h/7d usage rates always visible, color-coded
 - ✅ **Color-coded warnings** - Green → Yellow → Red as context usage increases (ANSI RGB)
@@ -30,18 +31,18 @@
 **Heavy** (wide terminals):
 ```
 🧠 [██░░░░░░░░░░░░░░░░░░] 10% · 🤖 Opus 4.6 (1M) · 💬 Topic Name · 🌿 feat/bar (#42) · 📁 project
-⚡ 5h: 5% · 7d:  2% · 💰  $12 · 🟢 Alerts daemon ON
+⚡ 5h: 5% · 7d:  2% · 💰  $12 · 🟢 Alerts daemon ON · 📝 3 files +45 -12
 ```
 
 **Regular** (default):
 ```
-🧠 ██░░░░░░░░ 10%  🤖 Opus 4.6 (1M)  💬 Topic Name  🌿 feat/bar (#42)  📁 project
+🧠 ██░░░░░░░░ 10%  🤖 Opus 4.6 (1M)  💬 Topic Name  🌿 feat/bar (#42)  📝 3f +45 -12  📁 project
 ⚡ 5h: 5%  7d: 2%  🟢 Alerts ON
 ```
 
 **Minimal** (narrow terminals):
 ```
-🧠 10% Op4.6(1M) │ Topic Name │ #42 project │ ⚡5h: 5% 7d: 2% │ 🟢(1)
+🧠 10% Op4.6(1M) │ Topic Name │ #42 project │ 3f +45 -12 │ ⚡5h: 5% 7d: 2% │ 🟢(1)
 ```
 
 Color changes based on usage:
@@ -233,10 +234,11 @@ Supports English city names, Hebrew names, zone-specific names (e.g., `Tel Aviv 
 |----------|--------|-------------|
 | `CLAUDE_PULSE_DENSITY` | `minimal` / `regular` / `heavy` | Override auto-detected density tier |
 | `CLAUDE_PULSE_HIDE_COST` | `1` | Hide session cost (💰) in heavy mode — recommended for Max/Pro |
+| `CLAUDE_PULSE_HIDE_DIFF` | `1` | Hide git diff stats (📝) |
 | `RED_ALERT_CITIES` | comma-separated | Filter alerts to specific cities/zones |
 | `RED_ALERT_MODE` | `all` / `mock` | `all` = every alert. `mock` = offline test data |
 | `RED_ALERT_SOUND` | `off` | Disable alert sounds |
-| `RED_ALERT_SOUND_COOLDOWN_MISSILE` | seconds | Min time between missile sounds (default 40) |
+| `RED_ALERT_SOUND_COOLDOWN_MISSILE` | seconds | Min time between missile sounds (default 60) |
 | `RED_ALERT_SOUND_COOLDOWN_PRE` | seconds | Min time between pre-alert sounds (default 120) |
 
 #### Architecture
