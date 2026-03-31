@@ -1,5 +1,5 @@
 #!/bin/bash
-# red-alert-daemon.sh v3.0.2: Background daemon for Pikud HaOref alert monitoring
+# red-alert-daemon.sh v3.1.0: Background daemon for Pikud HaOref alert monitoring
 # Polls the official alert API every 2 seconds and writes state to disk
 # Supports: normal mode (API), all mode (API, no filter), mock mode (offline testing)
 
@@ -219,12 +219,12 @@ play_sound() {
     local sound_file="$2"
     local current_alert_id="$3"
     if [[ "$RED_ALERT_SOUND" == "off" ]]; then return; fi
-    # Per-class cooldown: missiles 40s, pre-alerts 120s
+    # Per-class cooldown: missiles 60s, pre-alerts 120s
     local cooldown
     case "$sound_class" in
-        missile)   cooldown="${RED_ALERT_SOUND_COOLDOWN_MISSILE:-40}" ;;
+        missile)   cooldown="${RED_ALERT_SOUND_COOLDOWN_MISSILE:-60}" ;;
         pre_alert) cooldown="${RED_ALERT_SOUND_COOLDOWN_PRE:-120}" ;;
-        *)         cooldown="${RED_ALERT_SOUND_COOLDOWN:-40}" ;;
+        *)         cooldown="${RED_ALERT_SOUND_COOLDOWN:-60}" ;;
     esac
     local cooldown_file="${STATE_DIR}/red_alert_last_sound_${sound_class}"
     if [[ -f "$cooldown_file" ]]; then

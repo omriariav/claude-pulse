@@ -1,5 +1,5 @@
 #!/bin/bash
-# claude-pulse v3.0.2: Real-time token usage for Claude Code status line
+# claude-pulse v3.1.0: Real-time token usage for Claude Code status line
 # Uses billing API (transcript) for accurate FULL context usage
 # Falls back to native context_window when transcript unavailable
 # Displays current model name and AI-generated conversation names
@@ -17,6 +17,7 @@ C_DIM=$'\033[38;2;128;128;128m'
 C_RESET=$'\033[0m'
 C_RED_BG=$'\033[41;97m'
 C_GREEN_BG=$'\033[42;97m'
+C_CYAN=$'\033[38;2;139;233;253m'
 C_YELLOW_BG=$'\033[43;30m'
 SEP="${C_DIM}│${C_RESET}"
 
@@ -351,6 +352,53 @@ if command -v git &>/dev/null; then
     branch=$(git -C "$cwd" branch --show-current 2>/dev/null)
 fi
 
+# Git diff stats (files changed, insertions, deletions)
+diff_files=0
+diff_ins=0
+diff_del=0
+if [[ -z "$CLAUDE_PULSE_HIDE_DIFF" ]] && git -C "$cwd" rev-parse --is-inside-work-tree &>/dev/null; then
+    diff_stat=$(LC_ALL=C git -C "$cwd" diff HEAD --shortstat 2>/dev/null)
+    if [[ -n "$diff_stat" ]]; then
+        # Bash regex — no sed subprocesses, handles multi-digit numbers correctly
+        [[ $diff_stat =~ ([0-9]+)\ file ]] && diff_files="${BASH_REMATCH[1]}"
+        [[ $diff_stat =~ ([0-9]+)\ insertion ]] && diff_ins="${BASH_REMATCH[1]}"
+        [[ $diff_stat =~ ([0-9]+)\ deletion ]] && diff_del="${BASH_REMATCH[1]}"
+    fi
+fi
+
+# Build diff segment (density-aware, only when dirty)
+diff_segment=""
+if (( diff_files > 0 )); then
+    _plus=""
+    _minus=""
+    (( diff_ins > 0 )) && _plus="${C_GREEN}+${diff_ins}${C_RESET}"
+    (( diff_del > 0 )) && _minus="${C_RED}-${diff_del}${C_RESET}"
+    # Join with space, no leading space for deletion-only case
+    _changes=""
+    if [[ -n "$_plus" ]] && [[ -n "$_minus" ]]; then
+        _changes="${_plus} ${_minus}"
+    elif [[ -n "$_plus" ]]; then
+        _changes="$_plus"
+    else
+        _changes="$_minus"
+    fi
+
+    _changes_suffix="${_changes:+ $_changes}"
+
+    case "$density" in
+        minimal)
+            diff_segment=" ${SEP} ${C_CYAN}${diff_files}f${C_RESET}${_changes_suffix}"
+            ;;
+        regular)
+            diff_segment="  📝 ${C_CYAN}${diff_files}f${C_RESET}${_changes_suffix}"
+            ;;
+        heavy)
+            _fl="files"; (( diff_files == 1 )) && _fl="file"
+            diff_segment=" · 📝 ${C_CYAN}${diff_files} ${_fl}${C_RESET}${_changes_suffix}"
+            ;;
+    esac
+fi
+
 # Git branch + PR number segment
 pr_segment=""
 pr_number=""
@@ -387,13 +435,17 @@ if [[ -n "$branch" ]]; then
         [[ "$pr_number" == "none" ]] && pr_number=""
     fi
 
+    # PR display label
+    pr_display=""
+    [[ -n "$pr_number" ]] && pr_display="#${pr_number}"
+
     # Format branch/PR segment by density
     case "$density" in
         minimal)
             if [[ -n "$pr_number" ]]; then
-                pr_segment=" ${SEP} #${pr_number} ${short_cwd}"
+                pr_segment=" ${SEP} ${pr_display} ${short_cwd}"
             else
-                pr_segment=" ${SEP} ${branch:0:10} ${short_cwd}"
+                pr_segment=" ${SEP} ${branch:0:18} ${short_cwd}"
             fi
             ;;
         regular)
@@ -402,14 +454,14 @@ if [[ -n "$branch" ]]; then
                 local_branch="…${local_branch: -19}"
             fi
             if [[ -n "$pr_number" ]]; then
-                pr_segment="  🌿 ${local_branch} (#${pr_number})"
+                pr_segment="  🌿 ${local_branch} (${pr_display})"
             else
                 pr_segment="  🌿 ${local_branch}"
             fi
             ;;
         heavy)
             if [[ -n "$pr_number" ]]; then
-                pr_segment=" · 🌿 ${branch} (#${pr_number})"
+                pr_segment=" · 🌿 ${branch} (${pr_display})"
             else
                 pr_segment=" · 🌿 ${branch}"
             fi
@@ -763,9 +815,9 @@ case "$density" in
         printf "${color}🧠 ${percent}%% ${model_short}(${context_label})${reset}"
         printf "${name_segment}"
         if [[ -n "$branch" ]]; then
-            printf "${pr_segment}"
+            printf "${pr_segment}${diff_segment}"
         else
-            printf " ${SEP} ${short_cwd}"
+            printf " ${SEP} ${short_cwd}${diff_segment}"
         fi
         if [[ -n "$rate_5h" ]]; then
             printf " ${SEP} ⚡${rate_5h_color}5h:%2d%%${reset}" "$rate_5h_int"
@@ -782,7 +834,7 @@ case "$density" in
         ;;
     regular)
         # Line 1: emoji-separated segments (double-space between)
-        printf "${color}🧠 ${bar} ${percent}%%${reset}  🤖 ${model_name} (${context_label})${name_segment}${pr_segment}  📁 ${short_cwd}"
+        printf "${color}🧠 ${bar} ${percent}%%${reset}  🤖 ${model_name} (${context_label})${name_segment}${pr_segment}${diff_segment}  📁 ${short_cwd}"
         # Line 2: rates + alerts (only shown when data exists)
         if [[ -n "$rate_5h" ]]; then
             printf "\n⚡ ${rate_5h_color}5h:%2d%%${reset}" "$rate_5h_int"
@@ -802,9 +854,27 @@ case "$density" in
         fi
         ;;
     heavy)
-        # Line 1: · dot separators, full detail (%2d pads percent so · aligns with line 2)
-        printf "${color}🧠 ${bar} %2d%%${reset} · 🤖 ${model_name} (${context_label})${name_segment}${pr_segment} · 📁 ${short_cwd}" "$percent"
-        # Line 2: rates + cost + alerts (only shown when data exists)
+        # Line 1 & 2: · dot separators, column-aligned
+        # Col 2 alignment: model section (line 1) ↔ alert section (line 2) — pad shorter to match
+        _col2_model="🤖 ${model_name} (${context_label})"
+        _col2_model_len=${#_col2_model}
+        # Strip ANSI codes via bash parameter expansion (no subprocess)
+        _col2_alert_clean="${alert_part}"
+        while [[ "$_col2_alert_clean" =~ $'\033'\\[[0-9\;]*m ]]; do
+            _col2_alert_clean="${_col2_alert_clean//${BASH_REMATCH[0]}/}"
+        done
+        _col2_alert_len=${#_col2_alert_clean}
+        _col2_pad_model=0
+        _col2_pad_alert=0
+        if (( _col2_model_len < _col2_alert_len )); then
+            _col2_pad_model=$(( _col2_alert_len - _col2_model_len ))
+        else
+            _col2_pad_alert=$(( _col2_model_len - _col2_alert_len ))
+        fi
+
+        # Line 1: (%2d pads percent so · before 🤖 stacks with · before 🟢)
+        printf "${color}🧠 ${bar} %2d%%${reset} · ${_col2_model}%*s${name_segment}${pr_segment} · 📁 ${short_cwd}" "$percent" "$_col2_pad_model" ""
+        # Line 2: rates + cost + alerts + diff
         if [[ -n "$rate_5h" ]]; then
             printf "\n⚡ ${rate_5h_color}5h:%2d%%${reset}" "$rate_5h_int"
             if [[ -n "$rate_7d" ]]; then
@@ -812,12 +882,15 @@ case "$density" in
             fi
             printf "${cost_part}"
             if [[ -n "$alert_part" ]]; then
-                printf " · ${alert_part}"
+                printf " · ${alert_part}%*s" "$_col2_pad_alert" ""
             fi
             if [[ -n "$update_badge" ]]; then
                 printf " · ${update_badge}"
             fi
-        elif [[ -n "$alert_part" ]] || [[ -n "$cost_part" ]] || [[ -n "$update_badge" ]]; then
+            if [[ -n "$diff_segment" ]]; then
+                printf "${diff_segment}"
+            fi
+        elif [[ -n "$alert_part" ]] || [[ -n "$cost_part" ]] || [[ -n "$update_badge" ]] || [[ -n "$diff_segment" ]]; then
             _line2=""
             [[ -n "$cost_display" ]] && _line2="💰 ${cost_display}"
             if [[ -n "$alert_part" ]]; then
@@ -827,6 +900,14 @@ case "$density" in
             if [[ -n "$update_badge" ]]; then
                 [[ -n "$_line2" ]] && _line2="${_line2} · "
                 _line2="${_line2}${update_badge}"
+            fi
+            if [[ -n "$diff_segment" ]]; then
+                if [[ -n "$_line2" ]]; then
+                    _line2="${_line2}${diff_segment}"
+                else
+                    # Strip leading " · " when diff is first item on line 2
+                    _line2="${diff_segment# · }"
+                fi
             fi
             printf "\n  ${_line2}"
         fi

@@ -48,7 +48,11 @@ Key alignment rules:
 - **Regular** line 2: `%2d` for 5h, `%2d` for 7d — `🟢` lands under `🤖`
 - **Heavy** line 2: `%2d` for 5h, `%3d` for 7d, `%4s` for cost — `·` before `🟢` stacks with `·` after context `%`
 
-Env vars: `CLAUDE_PULSE_DENSITY` (minimal/regular/heavy), `CLAUDE_PULSE_HIDE_COST` (set to hide `💰` in heavy mode — recommended for Max/Pro users)
+Env vars: `CLAUDE_PULSE_DENSITY` (minimal/regular/heavy), `CLAUDE_PULSE_HIDE_COST` (set to hide `💰` in heavy mode — recommended for Max/Pro users), `CLAUDE_PULSE_HIDE_DIFF` (set to hide `📝` git diff stats)
+
+### Git diff stats (v3.1.0)
+
+Shows uncommitted changes (staged + unstaged) via `LC_ALL=C git diff HEAD --shortstat`. Color-coded: cyan for file count, green for insertions, red for deletions. Hidden when working tree is clean or `CLAUDE_PULSE_HIDE_DIFF` is set. Works in detached HEAD (gated on `git rev-parse --is-inside-work-tree`, not branch detection). Parsing uses bash `=~` regex (no sed subprocesses). In heavy mode, appears on line 2 with column alignment between model and alert sections.
 
 ### Model detection
 
