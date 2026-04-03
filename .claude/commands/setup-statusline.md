@@ -12,12 +12,20 @@ Complete onboarding. Claude runs each step, using `AskUserQuestion` for choices.
 
 ```bash
 CLAUDE_DIR="$HOME/.claude"
-mkdir -p "$CLAUDE_DIR/static"
+mkdir -p "$CLAUDE_DIR/static" "$CLAUDE_DIR/commands"
 cp claude-pulse "$CLAUDE_DIR/statusline-command.sh" && chmod +x "$CLAUDE_DIR/statusline-command.sh"
 cp red-alert-daemon.sh "$CLAUDE_DIR/red-alert-daemon.sh" && chmod +x "$CLAUDE_DIR/red-alert-daemon.sh"
 cp update.sh "$CLAUDE_DIR/update.sh" && chmod +x "$CLAUDE_DIR/update.sh"
 cp static/*.m4a "$CLAUDE_DIR/static/" 2>/dev/null || true
 curl -s --max-time 10 -o "$CLAUDE_DIR/districts_eng.json" "https://www.oref.org.il/districts/districts_eng.json" || true
+```
+
+Copy management skills to user-level so they work from any project directory:
+
+```bash
+for skill in setup-statusline update-pulse uninstall-statusline uninstall-red-alert; do
+    cp ".claude/commands/${skill}.md" "$CLAUDE_DIR/commands/${skill}.md"
+done
 ```
 
 ## 2. Configure statusline
@@ -133,7 +141,7 @@ pkill -9 -f red-alert-daemon 2>/dev/null || true
 rm -f ~/.local/state/claude-pulse/red_alert_daemon.pid ~/.local/state/claude-pulse/red_alert_last_sound ~/.local/state/claude-pulse/red_alert_state.json
 ```
 
-If the plist `~/Library/LaunchAgents/com.claude-pulse.red-alert.plist` does not exist, create it first by running `./install.sh` from the repo directory (it generates the plist with the correct structure). Then Edit the plist — add env vars to `EnvironmentVariables`, set `KeepAlive` and `RunAtLoad` to `<true/>`.
+If the plist `~/Library/LaunchAgents/com.claude-pulse.red-alert.plist` does not exist, create it first by running `./install.sh` from the repo directory (it generates the plist with the correct structure). Then Edit the plist — add env vars to `EnvironmentVariables`, set `RunAtLoad` to `<true/>`, and ensure `KeepAlive` is `<false/>` (the daemon self-heals via exponential backoff; KeepAlive causes restart loops).
 
 ```bash
 launchctl list | grep -q com.claude-pulse.red-alert || launchctl load ~/Library/LaunchAgents/com.claude-pulse.red-alert.plist

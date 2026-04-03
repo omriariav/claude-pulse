@@ -23,13 +23,18 @@ rm -rf ~/.local/state/claude-pulse/
 rm -rf ~/.cache/claude-pulse/
 ```
 
-## 3. Remove installed scripts
+## 3. Remove installed scripts and skills
 
 ```bash
 rm -f ~/.claude/statusline-command.sh
 rm -f ~/.claude/red-alert-daemon.sh
+rm -f ~/.claude/update.sh
 rm -f ~/.claude/districts_eng.json
 rm -rf ~/.claude/static/*.m4a
+rm -f ~/.claude/commands/setup-statusline.md
+rm -f ~/.claude/commands/update-pulse.md
+rm -f ~/.claude/commands/uninstall-statusline.md
+rm -f ~/.claude/commands/uninstall-red-alert.md
 ```
 
 ## 4. Clean settings.json
