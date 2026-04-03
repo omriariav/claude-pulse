@@ -856,7 +856,7 @@ case "$density" in
     heavy)
         # Line 1 & 2: · dot separators
         # Line 1: (%2d pads percent so · before 🤖 stacks with · before 🟢)
-        printf "${color}🧠 ${bar} %2d%%${reset} · 🤖 ${model_name} (${context_label})${diff_segment}${name_segment}${pr_segment} · 📁 ${short_cwd}" "$percent"
+        printf "${color}🧠 ${bar} %2d%%${reset} · 🤖 ${model_name} (${context_label})${name_segment}${pr_segment}${diff_segment} · 📁 ${short_cwd}" "$percent"
         # Line 2: rates + cost + alerts
         if [[ -n "$rate_5h" ]]; then
             printf "\n⚡ ${rate_5h_color}5h:%2d%%${reset}" "$rate_5h_int"
