@@ -1,11 +1,11 @@
 # claude-pulse
 
-> Real-time token usage monitoring for Claude Code status line | **v3.1.0**
+> Real-time token usage monitoring for Claude Code status line | **v3.1.1**
 
 **claude-pulse** displays your current Claude Code token usage directly in your status line, helping you stay aware of context consumption without running `/context` manually.
 
 ```
-🧠 [████████░░░░░░░░░░░░] 42% · 🤖 Opus 4.6 (1M) · 💬 API Refactor · 🌿 feat/auth-flow (#12) · 📁 my-project
+🧠 [████████░░░░░░░░░░░░] 42% · 🤖 Opus 4.6 (1M) · 💬 API Refactor · 🌿 feat/auth-flow (#12) · 📝 3 files +45 -12 · 📁 my-project
 ⚡ 5h: 5% · 7d:  2% · 💰  $3 · 🟢 Alerts daemon ON
 ```
 
@@ -30,8 +30,8 @@
 
 **Heavy** (wide terminals):
 ```
-🧠 [██░░░░░░░░░░░░░░░░░░] 10% · 🤖 Opus 4.6 (1M) · 💬 Topic Name · 🌿 feat/bar (#42) · 📁 project
-⚡ 5h: 5% · 7d:  2% · 💰  $12 · 🟢 Alerts daemon ON · 📝 3 files +45 -12
+🧠 [██░░░░░░░░░░░░░░░░░░] 10% · 🤖 Opus 4.6 (1M) · 💬 Topic Name · 🌿 feat/bar (#42) · 📝 3 files +45 -12 · 📁 project
+⚡ 5h: 5% · 7d:  2% · 💰  $12 · 🟢 Alerts daemon ON
 ```
 
 **Regular** (default):
@@ -290,7 +290,9 @@ You can! But claude-pulse offers:
 
 | Version | Highlights |
 |---------|-----------|
-| **v3.0.2** | Adaptive density statusline (minimal/regular/heavy), ANSI RGB colors, `/setup-statusline` onboarding, session cost, city accumulation fix |
+| **v3.1.1** | KeepAlive fix, heavy mode alignment, user-level skills, OTA skill updates, setup portability |
+| **v3.1.0** | Git diff stats, `CLAUDE_PULSE_HIDE_DIFF` env var, heavy mode column alignment |
+| **v3.0.2** | Exponential backoff for API failures, daemon self-healing |
 | **v2.5.2** | Pre-alert banner persists after main alert expires; SessionStart hook no longer kills running daemon |
 | **v2.5.1** | Fix Sonnet 4.6 model detection (was showing "Sonnet 4.5") |
 | **v2.5.0** | Native `session_name` support — zero-latency conversation names, no API calls needed |

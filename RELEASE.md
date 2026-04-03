@@ -1,5 +1,29 @@
 # Release Notes
 
+## v3.1.1 - Regression Fixes
+
+**Released:** April 3, 2026
+
+### Bug Fixes
+
+- **Setup KeepAlive fix** — `/setup-statusline` no longer sets `KeepAlive=true` in the Red Alert daemon plist (daemon self-heals via backoff; KeepAlive caused restart loops)
+- **Heavy mode alignment** — removed column padding that created a large gap after model name on clean working trees; fixed 2-space indent on fallback line 2
+- **Diff stats on line 1** — heavy mode now shows `📝` diff stats on line 1 (consistent with regular mode), instead of line 2
+- **Setup portability** — `/setup-statusline` now works from any project directory (detects partial installs, only requires repo for first install)
+- **Plist absolute paths** — setup skill emphasizes absolute `$HOME` paths in plist (launchd doesn't expand `~`)
+
+### Improvements
+
+- **User-level skills** — setup copies management skills (`/setup-statusline`, `/update-pulse`, `/uninstall-statusline`, `/uninstall-red-alert`) to `~/.claude/commands/` for global access
+- **OTA skill updates** — release tarball now includes command files; OTA updates them alongside scripts
+- **Uninstall cleanup** — `/uninstall-statusline` now removes `update.sh` and user-level skill files
+- **install.sh tarball compat** — tries both repo and tarball paths when copying skills
+
+### Tests
+
+- Regression tests for diff stats placement (line 1 in heavy/regular) and gap detection
+- OTA test verifies all 4 command files are copied during update
+
 ## v3.1.0 - Git Diff Stats
 
 **Released:** March 31, 2026
