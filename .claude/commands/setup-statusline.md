@@ -10,18 +10,22 @@ Complete onboarding. Claude runs each step, using `AskUserQuestion` for choices.
 
 ## 1. Install files
 
-First, check if claude-pulse is already installed:
-
-```bash
-[[ -f "$HOME/.claude/statusline-command.sh" ]] && echo "INSTALLED" || echo "NOT_INSTALLED"
-```
-
-**If NOT_INSTALLED**: the repo files are needed. Verify we're in the claude-pulse repo directory (check `claude-pulse` file exists in cwd). If not, tell the user: "First-time install requires the repo. Run: `git clone https://github.com/omriariav/claude-pulse && cd claude-pulse && /setup-statusline`" and stop.
-
-**If NOT_INSTALLED** (in repo): copy files from the repo:
+First, check if all core files are installed:
 
 ```bash
 CLAUDE_DIR="$HOME/.claude"
+missing=""
+for f in statusline-command.sh red-alert-daemon.sh update.sh; do
+    [[ ! -f "$CLAUDE_DIR/$f" ]] && missing="$missing $f"
+done
+[[ -z "$missing" ]] && echo "INSTALLED" || echo "NEEDS_INSTALL:$missing"
+```
+
+**If NEEDS_INSTALL**: the repo files are needed. Verify we're in the claude-pulse repo directory (check `claude-pulse` file exists in cwd). If not, tell the user: "Installation requires the repo. Run: `git clone https://github.com/omriariav/claude-pulse && cd claude-pulse && /setup-statusline`" and stop.
+
+**If NEEDS_INSTALL** (in repo): copy files from the repo:
+
+```bash
 mkdir -p "$CLAUDE_DIR/static" "$CLAUDE_DIR/commands"
 cp claude-pulse "$CLAUDE_DIR/statusline-command.sh" && chmod +x "$CLAUDE_DIR/statusline-command.sh"
 cp red-alert-daemon.sh "$CLAUDE_DIR/red-alert-daemon.sh" && chmod +x "$CLAUDE_DIR/red-alert-daemon.sh"

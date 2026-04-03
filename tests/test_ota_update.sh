@@ -185,7 +185,9 @@ check "staging cleaned up" '[[ ! -d "$FAKE_STAGING" ]]'
 
 # Verify management skills were copied
 check "OTA copied setup-statusline command" '[[ -f "$FAKE_CLAUDE_DIR/commands/setup-statusline.md" ]]'
+check "OTA copied update-pulse command" '[[ -f "$FAKE_CLAUDE_DIR/commands/update-pulse.md" ]]'
 check "OTA copied uninstall-statusline command" '[[ -f "$FAKE_CLAUDE_DIR/commands/uninstall-statusline.md" ]]'
+check "OTA copied uninstall-red-alert command" '[[ -f "$FAKE_CLAUDE_DIR/commands/uninstall-red-alert.md" ]]'
 
 check "rate limit file updated" '[[ -f "$FAKE_CACHE_DIR/last_update_check" ]]'
 
