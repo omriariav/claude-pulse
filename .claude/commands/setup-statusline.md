@@ -10,6 +10,16 @@ Complete onboarding. Claude runs each step, using `AskUserQuestion` for choices.
 
 ## 1. Install files
 
+First, check if claude-pulse is already installed:
+
+```bash
+[[ -f "$HOME/.claude/statusline-command.sh" ]] && echo "INSTALLED" || echo "NOT_INSTALLED"
+```
+
+**If NOT_INSTALLED**: the repo files are needed. Verify we're in the claude-pulse repo directory (check `claude-pulse` file exists in cwd). If not, tell the user: "First-time install requires the repo. Run: `git clone https://github.com/omriariav/claude-pulse && cd claude-pulse && /setup-statusline`" and stop.
+
+**If NOT_INSTALLED** (in repo): copy files from the repo:
+
 ```bash
 CLAUDE_DIR="$HOME/.claude"
 mkdir -p "$CLAUDE_DIR/static" "$CLAUDE_DIR/commands"
@@ -18,15 +28,12 @@ cp red-alert-daemon.sh "$CLAUDE_DIR/red-alert-daemon.sh" && chmod +x "$CLAUDE_DI
 cp update.sh "$CLAUDE_DIR/update.sh" && chmod +x "$CLAUDE_DIR/update.sh"
 cp static/*.m4a "$CLAUDE_DIR/static/" 2>/dev/null || true
 curl -s --max-time 10 -o "$CLAUDE_DIR/districts_eng.json" "https://www.oref.org.il/districts/districts_eng.json" || true
-```
-
-Copy management skills to user-level so they work from any project directory:
-
-```bash
 for skill in setup-statusline update-pulse uninstall-statusline uninstall-red-alert; do
     cp ".claude/commands/${skill}.md" "$CLAUDE_DIR/commands/${skill}.md"
 done
 ```
+
+**If INSTALLED**: skip file copying — scripts are already in place and OTA keeps them updated. Proceed to step 2.
 
 ## 2. Configure statusline
 
@@ -141,7 +148,7 @@ pkill -9 -f red-alert-daemon 2>/dev/null || true
 rm -f ~/.local/state/claude-pulse/red_alert_daemon.pid ~/.local/state/claude-pulse/red_alert_last_sound ~/.local/state/claude-pulse/red_alert_state.json
 ```
 
-If the plist `~/Library/LaunchAgents/com.claude-pulse.red-alert.plist` does not exist, create it first by running `./install.sh` from the repo directory (it generates the plist with the correct structure). Then Edit the plist — add env vars to `EnvironmentVariables`, set `RunAtLoad` to `<true/>`, and ensure `KeepAlive` is `<false/>` (the daemon self-heals via exponential backoff; KeepAlive causes restart loops).
+If the plist `~/Library/LaunchAgents/com.claude-pulse.red-alert.plist` does not exist, create it using the Write tool with the standard plist structure (Label=com.claude-pulse.red-alert, ProgramArguments=~/.claude/red-alert-daemon.sh, RunAtLoad=false, KeepAlive=false, WorkingDirectory=$HOME, stdout/stderr to ~/.local/state/claude-pulse/, EnvironmentVariables with HOME and PATH). Then Edit the plist — add env vars to `EnvironmentVariables`, set `RunAtLoad` to `<true/>`, and ensure `KeepAlive` is `<false/>` (the daemon self-heals via exponential backoff; KeepAlive causes restart loops).
 
 ```bash
 launchctl list | grep -q com.claude-pulse.red-alert || launchctl load ~/Library/LaunchAgents/com.claude-pulse.red-alert.plist

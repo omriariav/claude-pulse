@@ -298,6 +298,10 @@ apply_update() {
     mkdir -p "${CLAUDE_DIR}/static"
     cp "${STAGING_DIR}/"static/*.m4a "${CLAUDE_DIR}/static/" 2>/dev/null || true
 
+    # Management skills (slash commands)
+    mkdir -p "${CLAUDE_DIR}/commands"
+    cp "${STAGING_DIR}/"commands/*.md "${CLAUDE_DIR}/commands/" 2>/dev/null || true
+
     # Post-apply health check — verify all versioned files updated
     local new_ver check_ok=true
     new_ver=$(get_installed_version)

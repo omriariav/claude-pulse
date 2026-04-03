@@ -8,6 +8,7 @@ set -euo pipefail
 REPO="omriariav/claude-pulse"
 RELEASE_FILES=(claude-pulse red-alert-daemon.sh update.sh install.sh)
 RELEASE_DIRS=(static)
+RELEASE_COMMANDS=(setup-statusline update-pulse uninstall-statusline uninstall-red-alert)
 
 # Determine version
 if [[ -n "${1:-}" ]]; then
@@ -88,6 +89,10 @@ for f in "${RELEASE_FILES[@]}"; do
 done
 for d in "${RELEASE_DIRS[@]}"; do
     [[ -d "$d" ]] && cp -r "$d" "$CONTENT_DIR/"
+done
+mkdir -p "$CONTENT_DIR/commands"
+for cmd in "${RELEASE_COMMANDS[@]}"; do
+    cp ".claude/commands/${cmd}.md" "$CONTENT_DIR/commands/"
 done
 
 (cd "$BUILD_DIR" && tar czf "$TARBALL_NAME" "claude-pulse-${TAG}/")
