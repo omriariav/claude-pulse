@@ -74,7 +74,9 @@ else
     mkdir -p "$CLAUDE_DIR/static" "$CLAUDE_DIR/commands"
     cp static/*.m4a "$CLAUDE_DIR/static/" 2>/dev/null || true
     for skill in setup-statusline update-pulse uninstall-statusline uninstall-red-alert; do
-        cp ".claude/commands/${skill}.md" "$CLAUDE_DIR/commands/${skill}.md" 2>/dev/null || true
+        # Try repo path first (.claude/commands/), then tarball path (commands/)
+        cp ".claude/commands/${skill}.md" "$CLAUDE_DIR/commands/${skill}.md" 2>/dev/null || \
+            cp "commands/${skill}.md" "$CLAUDE_DIR/commands/${skill}.md" 2>/dev/null || true
     done
 
     echo "claude-pulse installed to $CLAUDE_DIR/statusline-command.sh"

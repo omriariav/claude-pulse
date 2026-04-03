@@ -148,7 +148,7 @@ pkill -9 -f red-alert-daemon 2>/dev/null || true
 rm -f ~/.local/state/claude-pulse/red_alert_daemon.pid ~/.local/state/claude-pulse/red_alert_last_sound ~/.local/state/claude-pulse/red_alert_state.json
 ```
 
-If the plist `~/Library/LaunchAgents/com.claude-pulse.red-alert.plist` does not exist, create it using the Write tool with the standard plist structure (Label=com.claude-pulse.red-alert, ProgramArguments=~/.claude/red-alert-daemon.sh, RunAtLoad=false, KeepAlive=false, WorkingDirectory=$HOME, stdout/stderr to ~/.local/state/claude-pulse/, EnvironmentVariables with HOME and PATH). Then Edit the plist — add env vars to `EnvironmentVariables`, set `RunAtLoad` to `<true/>`, and ensure `KeepAlive` is `<false/>` (the daemon self-heals via exponential backoff; KeepAlive causes restart loops).
+If the plist `~/Library/LaunchAgents/com.claude-pulse.red-alert.plist` does not exist, create it using the Write tool. **IMPORTANT**: All paths in the plist must be absolute (use the user's actual `$HOME`, e.g. `/Users/username/...`). `launchd` does NOT expand `~`. Use the standard structure: Label=com.claude-pulse.red-alert, ProgramArguments=$HOME/.claude/red-alert-daemon.sh, RunAtLoad=false, KeepAlive=false, WorkingDirectory=$HOME, stdout/stderr to $HOME/.local/state/claude-pulse/, EnvironmentVariables with HOME and PATH=/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin. Then Edit the plist — add env vars to `EnvironmentVariables`, set `RunAtLoad` to `<true/>`, and ensure `KeepAlive` is `<false/>` (the daemon self-heals via exponential backoff; KeepAlive causes restart loops).
 
 ```bash
 launchctl list | grep -q com.claude-pulse.red-alert || launchctl load ~/Library/LaunchAgents/com.claude-pulse.red-alert.plist
