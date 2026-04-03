@@ -176,6 +176,19 @@ assert_not_contains "$out_min" "📝" "minimal mode has no pencil emoji"
 out_reg=$(echo "$_diff_json" | CLAUDE_PULSE_DENSITY=regular "$PULSE" 2>/dev/null)
 assert_contains "$out_reg" "📝" "regular mode shows pencil emoji"
 
+# test_diff_heavy_line1: diff stats on line 1 (not line 2) in heavy mode
+_heavy_line1=$(echo "$out_diff" | head -1)
+assert_contains "$_heavy_line1" "📝" "heavy mode: diff stats on line 1"
+
+# test_diff_regular_line1: diff stats on line 1 in regular mode
+_reg_line1=$(echo "$out_reg" | head -1)
+assert_contains "$_reg_line1" "📝" "regular mode: diff stats on line 1"
+
+# test_heavy_no_gap: no column padding gap after model on clean tree
+_heavy_clean=$(echo "{\"cwd\":\"$_clean_dir\",\"model\":{\"id\":\"claude-opus-4-6\"},\"context_window\":{\"total_input_tokens\":50000,\"total_output_tokens\":5000,\"context_window_size\":200000},\"session_name\":\"Test\"}" | CLAUDE_PULSE_DENSITY=heavy "$PULSE" 2>/dev/null)
+_heavy_clean_line1=$(echo "$_heavy_clean" | head -1)
+assert_not_contains "$_heavy_clean_line1" "    " "heavy mode: no large gap on line 1 with clean tree"
+
 rm -rf "$_diff_dir" "$_clean_dir"
 
 cleanup

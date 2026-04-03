@@ -10,15 +10,34 @@ Complete onboarding. Claude runs each step, using `AskUserQuestion` for choices.
 
 ## 1. Install files
 
+First, check if all core files are installed:
+
 ```bash
 CLAUDE_DIR="$HOME/.claude"
-mkdir -p "$CLAUDE_DIR/static"
+missing=""
+for f in statusline-command.sh red-alert-daemon.sh update.sh; do
+    [[ ! -f "$CLAUDE_DIR/$f" ]] && missing="$missing $f"
+done
+[[ -z "$missing" ]] && echo "INSTALLED" || echo "NEEDS_INSTALL:$missing"
+```
+
+**If NEEDS_INSTALL**: the repo files are needed. Verify we're in the claude-pulse repo directory (check `claude-pulse` file exists in cwd). If not, tell the user: "Installation requires the repo. Run: `git clone https://github.com/omriariav/claude-pulse && cd claude-pulse && /setup-statusline`" and stop.
+
+**If NEEDS_INSTALL** (in repo): copy files from the repo:
+
+```bash
+mkdir -p "$CLAUDE_DIR/static" "$CLAUDE_DIR/commands"
 cp claude-pulse "$CLAUDE_DIR/statusline-command.sh" && chmod +x "$CLAUDE_DIR/statusline-command.sh"
 cp red-alert-daemon.sh "$CLAUDE_DIR/red-alert-daemon.sh" && chmod +x "$CLAUDE_DIR/red-alert-daemon.sh"
 cp update.sh "$CLAUDE_DIR/update.sh" && chmod +x "$CLAUDE_DIR/update.sh"
 cp static/*.m4a "$CLAUDE_DIR/static/" 2>/dev/null || true
 curl -s --max-time 10 -o "$CLAUDE_DIR/districts_eng.json" "https://www.oref.org.il/districts/districts_eng.json" || true
+for skill in setup-statusline update-pulse uninstall-statusline uninstall-red-alert; do
+    cp ".claude/commands/${skill}.md" "$CLAUDE_DIR/commands/${skill}.md"
+done
 ```
+
+**If INSTALLED**: skip file copying — scripts are already in place and OTA keeps them updated. Proceed to step 2.
 
 ## 2. Configure statusline
 
@@ -133,7 +152,7 @@ pkill -9 -f red-alert-daemon 2>/dev/null || true
 rm -f ~/.local/state/claude-pulse/red_alert_daemon.pid ~/.local/state/claude-pulse/red_alert_last_sound ~/.local/state/claude-pulse/red_alert_state.json
 ```
 
-If the plist `~/Library/LaunchAgents/com.claude-pulse.red-alert.plist` does not exist, create it first by running `./install.sh` from the repo directory (it generates the plist with the correct structure). Then Edit the plist — add env vars to `EnvironmentVariables`, set `KeepAlive` and `RunAtLoad` to `<true/>`.
+If the plist `~/Library/LaunchAgents/com.claude-pulse.red-alert.plist` does not exist, create it using the Write tool. **IMPORTANT**: All paths in the plist must be absolute (use the user's actual `$HOME`, e.g. `/Users/username/...`). `launchd` does NOT expand `~`. Use the standard structure: Label=com.claude-pulse.red-alert, ProgramArguments=$HOME/.claude/red-alert-daemon.sh, RunAtLoad=false, KeepAlive=false, WorkingDirectory=$HOME, stdout/stderr to $HOME/.local/state/claude-pulse/, EnvironmentVariables with HOME and PATH=/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin. Then Edit the plist — add env vars to `EnvironmentVariables`, set `RunAtLoad` to `<true/>`, and ensure `KeepAlive` is `<false/>` (the daemon self-heals via exponential backoff; KeepAlive causes restart loops).
 
 ```bash
 launchctl list | grep -q com.claude-pulse.red-alert || launchctl load ~/Library/LaunchAgents/com.claude-pulse.red-alert.plist

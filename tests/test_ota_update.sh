@@ -52,12 +52,18 @@ _cur_patch=${current_ver##*.}
 FAKE_VER="${current_ver%.*}.$((_cur_patch + 1))"
 echo "--- Setup: Create fake v${FAKE_VER} release ---"
 FAKE_RELEASE_SRC="${MOCK_RELEASE_DIR}/omriariav-claude-pulse-abc1234"
-mkdir -p "$FAKE_RELEASE_SRC/static"
+mkdir -p "$FAKE_RELEASE_SRC/static" "$FAKE_RELEASE_SRC/commands"
 
 # Copy real files and bump version
 cp "$SCRIPT_DIR/claude-pulse" "$FAKE_RELEASE_SRC/claude-pulse"
 cp "$SCRIPT_DIR/red-alert-daemon.sh" "$FAKE_RELEASE_SRC/red-alert-daemon.sh"
 cp "$SCRIPT_DIR/update.sh" "$FAKE_RELEASE_SRC/update.sh"
+
+# Copy command files (management skills)
+for cmd in setup-statusline update-pulse uninstall-statusline uninstall-red-alert; do
+    cp "$SCRIPT_DIR/.claude/commands/${cmd}.md" "$FAKE_RELEASE_SRC/commands/" 2>/dev/null || \
+        echo "# placeholder ${cmd}" > "$FAKE_RELEASE_SRC/commands/${cmd}.md"
+done
 
 # Bump version in the fake release
 sed -i '' "s/v${current_ver}/v${FAKE_VER}/" "$FAKE_RELEASE_SRC/claude-pulse"
@@ -176,6 +182,12 @@ check "notification shows v${FAKE_VER}" '[[ "$notif_ver" == "$FAKE_VER" ]]'
 check "daemon restart marker created" '[[ -f "$FAKE_STATE_DIR/daemon_restart_requested" ]]'
 
 check "staging cleaned up" '[[ ! -d "$FAKE_STAGING" ]]'
+
+# Verify management skills were copied
+check "OTA copied setup-statusline command" '[[ -f "$FAKE_CLAUDE_DIR/commands/setup-statusline.md" ]]'
+check "OTA copied update-pulse command" '[[ -f "$FAKE_CLAUDE_DIR/commands/update-pulse.md" ]]'
+check "OTA copied uninstall-statusline command" '[[ -f "$FAKE_CLAUDE_DIR/commands/uninstall-statusline.md" ]]'
+check "OTA copied uninstall-red-alert command" '[[ -f "$FAKE_CLAUDE_DIR/commands/uninstall-red-alert.md" ]]'
 
 check "rate limit file updated" '[[ -f "$FAKE_CACHE_DIR/last_update_check" ]]'
 

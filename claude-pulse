@@ -854,27 +854,10 @@ case "$density" in
         fi
         ;;
     heavy)
-        # Line 1 & 2: · dot separators, column-aligned
-        # Col 2 alignment: model section (line 1) ↔ alert section (line 2) — pad shorter to match
-        _col2_model="🤖 ${model_name} (${context_label})"
-        _col2_model_len=${#_col2_model}
-        # Strip ANSI codes via bash parameter expansion (no subprocess)
-        _col2_alert_clean="${alert_part}"
-        while [[ "$_col2_alert_clean" =~ $'\033'\\[[0-9\;]*m ]]; do
-            _col2_alert_clean="${_col2_alert_clean//${BASH_REMATCH[0]}/}"
-        done
-        _col2_alert_len=${#_col2_alert_clean}
-        _col2_pad_model=0
-        _col2_pad_alert=0
-        if (( _col2_model_len < _col2_alert_len )); then
-            _col2_pad_model=$(( _col2_alert_len - _col2_model_len ))
-        else
-            _col2_pad_alert=$(( _col2_model_len - _col2_alert_len ))
-        fi
-
+        # Line 1 & 2: · dot separators
         # Line 1: (%2d pads percent so · before 🤖 stacks with · before 🟢)
-        printf "${color}🧠 ${bar} %2d%%${reset} · ${_col2_model}%*s${name_segment}${pr_segment} · 📁 ${short_cwd}" "$percent" "$_col2_pad_model" ""
-        # Line 2: rates + cost + alerts + diff
+        printf "${color}🧠 ${bar} %2d%%${reset} · 🤖 ${model_name} (${context_label})${name_segment}${pr_segment}${diff_segment} · 📁 ${short_cwd}" "$percent"
+        # Line 2: rates + cost + alerts
         if [[ -n "$rate_5h" ]]; then
             printf "\n⚡ ${rate_5h_color}5h:%2d%%${reset}" "$rate_5h_int"
             if [[ -n "$rate_7d" ]]; then
@@ -882,15 +865,12 @@ case "$density" in
             fi
             printf "${cost_part}"
             if [[ -n "$alert_part" ]]; then
-                printf " · ${alert_part}%*s" "$_col2_pad_alert" ""
+                printf " · ${alert_part}"
             fi
             if [[ -n "$update_badge" ]]; then
                 printf " · ${update_badge}"
             fi
-            if [[ -n "$diff_segment" ]]; then
-                printf "${diff_segment}"
-            fi
-        elif [[ -n "$alert_part" ]] || [[ -n "$cost_part" ]] || [[ -n "$update_badge" ]] || [[ -n "$diff_segment" ]]; then
+        elif [[ -n "$alert_part" ]] || [[ -n "$cost_part" ]] || [[ -n "$update_badge" ]]; then
             _line2=""
             [[ -n "$cost_display" ]] && _line2="💰 ${cost_display}"
             if [[ -n "$alert_part" ]]; then
@@ -901,15 +881,7 @@ case "$density" in
                 [[ -n "$_line2" ]] && _line2="${_line2} · "
                 _line2="${_line2}${update_badge}"
             fi
-            if [[ -n "$diff_segment" ]]; then
-                if [[ -n "$_line2" ]]; then
-                    _line2="${_line2}${diff_segment}"
-                else
-                    # Strip leading " · " when diff is first item on line 2
-                    _line2="${diff_segment# · }"
-                fi
-            fi
-            printf "\n  ${_line2}"
+            printf "\n${_line2}"
         fi
         ;;
 esac
