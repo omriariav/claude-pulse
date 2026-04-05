@@ -759,14 +759,26 @@ if [[ -n "$RED_ALERT_CITIES" ]] || [[ -n "$RED_ALERT_MODE" ]]; then
         if [[ -n "$_expected_ver" ]] && [[ -n "$_running_ver" ]] && [[ "$_running_ver" != "$_expected_ver" ]]; then
             # Version mismatch — drop restart marker for SessionStart hook to pick up
             echo "$_expected_ver" > "$_restart_request" 2>/dev/null
-            alert_indicator="${C_YELLOW}🟡 Daemon v${_running_ver} (update pending)${_debug_suffix}${reset}"
+            if [[ "$density" == "minimal" ]]; then
+                alert_indicator="${C_YELLOW}🟡${_debug_suffix}${reset}"
+            else
+                alert_indicator="${C_YELLOW}🟡 Daemon v${_running_ver} (update pending)${_debug_suffix}${reset}"
+            fi
         elif [[ -z "$alert_segment" ]]; then
-            alert_indicator="${C_GREEN}🟢 Alerts daemon ON${_debug_suffix}${reset}"
+            if [[ "$density" == "minimal" ]]; then
+                alert_indicator="${C_GREEN}🟢${_debug_suffix}${reset}"
+            else
+                alert_indicator="${C_GREEN}🟢 Alerts daemon ON${_debug_suffix}${reset}"
+            fi
         fi
     else
         # Daemon not running — drop restart marker (hook or update.sh will handle it)
         touch "$_restart_request" 2>/dev/null
-        alert_indicator="${C_GRAY}🔕 Alerts daemon not running${_debug_suffix}${reset}"
+        if [[ "$density" == "minimal" ]]; then
+            alert_indicator="${C_GRAY}🔕${_debug_suffix}${reset}"
+        else
+            alert_indicator="${C_GRAY}🔕 Alerts daemon not running${_debug_suffix}${reset}"
+        fi
     fi
 fi
 
