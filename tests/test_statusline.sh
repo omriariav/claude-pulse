@@ -210,18 +210,23 @@ _reg_alert=$(echo '{"cwd":"/test","model":{"id":"claude-opus-4-6"},"context_wind
 assert_contains "$_reg_alert" "🟢 Alerts daemon ON" "regular: shows full daemon ON text"
 
 # test_minimal_version_mismatch: daemon running but version differs → just 🟡 emoji
+# Stage a fake HOME with red-alert-daemon.sh so _expected_ver parses hermetically
+_fake_home="${TEST_TMPDIR}/fakehome"
+mkdir -p "${_fake_home}/.claude"
+echo -e '#!/bin/bash\n# red-alert-daemon.sh v9.9.9: fake' > "${_fake_home}/.claude/red-alert-daemon.sh"
 export RED_ALERT_STATE_DIR="$TEST_TMPDIR"
 echo "0.0.0" > "${TEST_TMPDIR}/daemon_version"
 setup_mock_daemon
 setup_expired_state "1" '["תל אביב"]'
-_min_mismatch=$(echo '{"cwd":"/test","model":{"id":"claude-opus-4-6"},"context_window":{"total_input_tokens":50000,"total_output_tokens":5000,"context_window_size":200000}}' | CLAUDE_PULSE_DENSITY=minimal "$PULSE" 2>/dev/null)
+_min_mismatch=$(echo '{"cwd":"/test","model":{"id":"claude-opus-4-6"},"context_window":{"total_input_tokens":50000,"total_output_tokens":5000,"context_window_size":200000}}' | HOME="$_fake_home" CLAUDE_PULSE_DENSITY=minimal "$PULSE" 2>/dev/null)
 assert_contains "$_min_mismatch" "🟡" "minimal: shows yellow circle for version mismatch"
 assert_not_contains "$_min_mismatch" "update pending" "minimal: no 'update pending' text"
 
 # test_regular_version_mismatch: same in regular → full text
-_reg_mismatch=$(echo '{"cwd":"/test","model":{"id":"claude-opus-4-6"},"context_window":{"total_input_tokens":50000,"total_output_tokens":5000,"context_window_size":200000}}' | CLAUDE_PULSE_DENSITY=regular "$PULSE" 2>/dev/null)
+_reg_mismatch=$(echo '{"cwd":"/test","model":{"id":"claude-opus-4-6"},"context_window":{"total_input_tokens":50000,"total_output_tokens":5000,"context_window_size":200000}}' | HOME="$_fake_home" CLAUDE_PULSE_DENSITY=regular "$PULSE" 2>/dev/null)
 assert_contains "$_reg_mismatch" "🟡 Daemon v0.0.0 (update pending)" "regular: shows full version mismatch text"
 rm -f "${TEST_TMPDIR}/daemon_version"
+rm -rf "$_fake_home"
 unset RED_ALERT_STATE_DIR
 
 # test_minimal_daemon_not_running: daemon not running → just 🔕 emoji
