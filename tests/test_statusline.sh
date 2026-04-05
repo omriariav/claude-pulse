@@ -191,5 +191,35 @@ assert_not_contains "$_heavy_clean_line1" "    " "heavy mode: no large gap on li
 
 rm -rf "$_diff_dir" "$_clean_dir"
 
+# --- Minimal mode alert indicator tests ---
+echo ""
+echo "Testing minimal mode alert indicators..."
+
+# Set up mock daemon (PID file pointing to our process)
+setup_mock_daemon
+export RED_ALERT_CITIES="Tel Aviv"
+
+# test_minimal_alert_on: daemon running, no active alert → just 🟢 emoji
+setup_expired_state "1" '["תל אביב"]'
+_min_alert=$(echo '{"cwd":"/test","model":{"id":"claude-opus-4-6"},"context_window":{"total_input_tokens":50000,"total_output_tokens":5000,"context_window_size":200000}}' | CLAUDE_PULSE_DENSITY=minimal "$PULSE" 2>/dev/null)
+assert_contains "$_min_alert" "🟢" "minimal: shows green circle"
+assert_not_contains "$_min_alert" "Alerts daemon ON" "minimal: no 'Alerts daemon ON' text"
+
+# test_regular_alert_on: same scenario in regular → shows full text
+_reg_alert=$(echo '{"cwd":"/test","model":{"id":"claude-opus-4-6"},"context_window":{"total_input_tokens":50000,"total_output_tokens":5000,"context_window_size":200000}}' | CLAUDE_PULSE_DENSITY=regular "$PULSE" 2>/dev/null)
+assert_contains "$_reg_alert" "🟢 Alerts daemon ON" "regular: shows full daemon ON text"
+
+# test_minimal_daemon_not_running: daemon not running → just 🔕 emoji
+rm -f "$RED_ALERT_PID_FILE"
+_min_off=$(echo '{"cwd":"/test","model":{"id":"claude-opus-4-6"},"context_window":{"total_input_tokens":50000,"total_output_tokens":5000,"context_window_size":200000}}' | CLAUDE_PULSE_DENSITY=minimal "$PULSE" 2>/dev/null)
+assert_contains "$_min_off" "🔕" "minimal: shows muted bell"
+assert_not_contains "$_min_off" "not running" "minimal: no 'not running' text"
+
+# test_regular_daemon_not_running: same in regular → full text
+_reg_off=$(echo '{"cwd":"/test","model":{"id":"claude-opus-4-6"},"context_window":{"total_input_tokens":50000,"total_output_tokens":5000,"context_window_size":200000}}' | CLAUDE_PULSE_DENSITY=regular "$PULSE" 2>/dev/null)
+assert_contains "$_reg_off" "🔕 Alerts daemon not running" "regular: shows full not running text"
+
+unset RED_ALERT_CITIES
+
 cleanup
 report
