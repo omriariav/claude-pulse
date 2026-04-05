@@ -209,6 +209,21 @@ assert_not_contains "$_min_alert" "Alerts daemon ON" "minimal: no 'Alerts daemon
 _reg_alert=$(echo '{"cwd":"/test","model":{"id":"claude-opus-4-6"},"context_window":{"total_input_tokens":50000,"total_output_tokens":5000,"context_window_size":200000}}' | CLAUDE_PULSE_DENSITY=regular "$PULSE" 2>/dev/null)
 assert_contains "$_reg_alert" "🟢 Alerts daemon ON" "regular: shows full daemon ON text"
 
+# test_minimal_version_mismatch: daemon running but version differs → just 🟡 emoji
+export RED_ALERT_STATE_DIR="$TEST_TMPDIR"
+echo "0.0.0" > "${TEST_TMPDIR}/daemon_version"
+setup_mock_daemon
+setup_expired_state "1" '["תל אביב"]'
+_min_mismatch=$(echo '{"cwd":"/test","model":{"id":"claude-opus-4-6"},"context_window":{"total_input_tokens":50000,"total_output_tokens":5000,"context_window_size":200000}}' | CLAUDE_PULSE_DENSITY=minimal "$PULSE" 2>/dev/null)
+assert_contains "$_min_mismatch" "🟡" "minimal: shows yellow circle for version mismatch"
+assert_not_contains "$_min_mismatch" "update pending" "minimal: no 'update pending' text"
+
+# test_regular_version_mismatch: same in regular → full text
+_reg_mismatch=$(echo '{"cwd":"/test","model":{"id":"claude-opus-4-6"},"context_window":{"total_input_tokens":50000,"total_output_tokens":5000,"context_window_size":200000}}' | CLAUDE_PULSE_DENSITY=regular "$PULSE" 2>/dev/null)
+assert_contains "$_reg_mismatch" "🟡 Daemon v0.0.0 (update pending)" "regular: shows full version mismatch text"
+rm -f "${TEST_TMPDIR}/daemon_version"
+unset RED_ALERT_STATE_DIR
+
 # test_minimal_daemon_not_running: daemon not running → just 🔕 emoji
 rm -f "$RED_ALERT_PID_FILE"
 _min_off=$(echo '{"cwd":"/test","model":{"id":"claude-opus-4-6"},"context_window":{"total_input_tokens":50000,"total_output_tokens":5000,"context_window_size":200000}}' | CLAUDE_PULSE_DENSITY=minimal "$PULSE" 2>/dev/null)
