@@ -1,5 +1,18 @@
 # Release Notes
 
+## v3.1.2 - Minimal Mode Polish
+
+**Released:** April 5, 2026
+
+### Improvements
+
+- **Compact minimal indicators** — Red Alert daemon status shows emoji-only in minimal density (`🟢`/`🔕`/`🟡`) instead of full text, saving horizontal space on narrow terminals
+
+### Tests
+
+- 9 new tests for minimal mode alert indicators covering all daemon states (running, not running, version mismatch) with regular mode comparison
+- Version mismatch test made hermetic with fake HOME for CI portability
+
 ## v3.1.1 - Regression Fixes
 
 **Released:** April 3, 2026

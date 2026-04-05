@@ -1,6 +1,6 @@
 # claude-pulse
 
-> Real-time token usage monitoring for Claude Code status line | **v3.1.1**
+> Real-time token usage monitoring for Claude Code status line | **v3.1.2**
 
 **claude-pulse** displays your current Claude Code token usage directly in your status line, helping you stay aware of context consumption without running `/context` manually.
 
@@ -42,7 +42,7 @@
 
 **Minimal** (narrow terminals):
 ```
-🧠 10% Op4.6(1M) │ Topic Name │ #42 project │ 3f +45 -12 │ ⚡5h: 5% 7d: 2% │ 🟢(1)
+🧠 10% Op4.6(1M) │ Topic Name │ #42 project │ 3f +45 -12 │ ⚡5h: 5% 7d: 2% │ 🟢
 ```
 
 Color changes based on usage:
