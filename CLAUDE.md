@@ -57,7 +57,8 @@ Shows uncommitted changes (staged + unstaged) via `LC_ALL=C git diff HEAD --shor
 ### Model detection
 
 - Model patterns must be ordered **most specific first** in the case/switch block (e.g., `claude-opus-4-6*` before `claude-opus-4*`), otherwise more specific models match the generic pattern
-- Currently supported: Opus 4.6, Opus 4.5, Sonnet 4.5, Sonnet 3.7, Sonnet 3.5, Haiku 3.5, Opus 3
+- Currently supported: Opus 4.7, Opus 4.6, Opus 4.5, Sonnet 4.6, Sonnet 4.5, Sonnet 3.7, Sonnet 3.5, Haiku 4.5, Haiku 3.5, Opus 3
+- **Not exposed by Claude Code statusline JSON** (as of 2.1.114): thinking/effort level (`/effort low|medium|high|xhigh|max`). There's no reliable way to display it until Claude Code adds it to the stdin payload — see https://github.com/anthropics/claude-code/issues/31987.
 
 ### Conversation name feature
 
