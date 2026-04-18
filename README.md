@@ -1,6 +1,6 @@
 # claude-pulse
 
-> Real-time token usage monitoring for Claude Code status line | **v3.1.2**
+> Real-time token usage monitoring for Claude Code status line | **v3.1.3**
 
 **claude-pulse** displays your current Claude Code token usage directly in your status line, helping you stay aware of context consumption without running `/context` manually.
 
@@ -149,10 +149,12 @@ The script:
 
 ## Supported Models
 
+- Claude Opus 4.7 (200k default, 1M with extended context)
 - Claude Opus 4.6 (200k default, 1M with extended context)
 - Claude Opus 4.5 (200k context)
 - Claude Sonnet 4.x (200k context)
 - Claude 3.5 Sonnet (200k context)
+- Claude Haiku 4.5 (200k context)
 - Claude Haiku 3.5 (200k context)
 - Unknown models default to 200k
 

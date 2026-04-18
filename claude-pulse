@@ -1,5 +1,5 @@
 #!/bin/bash
-# claude-pulse v3.1.2: Real-time token usage for Claude Code status line
+# claude-pulse v3.1.3: Real-time token usage for Claude Code status line
 # Uses billing API (transcript) for accurate FULL context usage
 # Falls back to native context_window when transcript unavailable
 # Displays current model name and AI-generated conversation names
@@ -56,7 +56,13 @@ fi
 short_cwd="$(basename "$cwd")"
 
 # Convert model ID to friendly name
+# Patterns are ordered most-specific first — a shorter pattern higher up would
+# shadow a more specific one (e.g. claude-opus-4* would catch claude-opus-4-7).
 case "$model_id" in
+    claude-opus-4-7*)
+        model_name="Opus 4.7"; model_short="Op4.7"
+        context_limit=200000
+        ;;
     claude-opus-4-6*)
         model_name="Opus 4.6"; model_short="Op4.6"
         context_limit=200000
@@ -75,6 +81,10 @@ case "$model_id" in
         ;;
     claude-sonnet-4*)
         model_name="Sonnet 4.5"; model_short="Son4.5"
+        context_limit=200000
+        ;;
+    claude-haiku-4-5*|claude-4-5-haiku*)
+        model_name="Haiku 4.5"; model_short="Hai4.5"
         context_limit=200000
         ;;
     claude-haiku-3-5*|claude-3-5-haiku*)

@@ -22,6 +22,8 @@ assert_contains "$output" "test" "basic output has cwd"
 
 # test_model_detection: each model ID maps to correct name
 for pair in \
+    "claude-opus-4-7-20260401:Opus 4.7" \
+    "claude-opus-4-7:Opus 4.7" \
     "claude-opus-4-6-20250929:Opus 4.6" \
     "claude-opus-4-6:Opus 4.6" \
     "claude-opus-4-20250512:Opus 4.5" \
@@ -29,6 +31,9 @@ for pair in \
     "claude-sonnet-4-6:Sonnet 4.6" \
     "claude-sonnet-4-5-20250514:Sonnet 4.5" \
     "claude-sonnet-4-20250514:Sonnet 4.5" \
+    "claude-haiku-4-5-20251001:Haiku 4.5" \
+    "claude-haiku-4-5:Haiku 4.5" \
+    "claude-4-5-haiku-20260101:Haiku 4.5" \
     "claude-haiku-3-5-20241022:Haiku 3.5" \
     "claude-sonnet-3-5-20240620:Sonnet 3.5" \
     "claude-opus-3-20240229:Opus 3" \
@@ -38,6 +43,11 @@ for pair in \
     out=$(echo "{\"cwd\":\"/test\",\"model\":{\"id\":\"$model_id\"},\"context_window\":{\"total_input_tokens\":50000,\"total_output_tokens\":5000,\"context_window_size\":200000}}" | "$PULSE" 2>/dev/null)
     assert_contains "$out" "$expected_name" "model detection: $model_id → $expected_name"
 done
+
+# Regression: Opus 4.7 must not fall through to the generic claude-opus-4* pattern and show "Opus 4.5".
+out_opus47=$(echo '{"cwd":"/test","model":{"id":"claude-opus-4-7-20260401"},"context_window":{"total_input_tokens":50000,"total_output_tokens":5000,"context_window_size":1000000}}' | "$PULSE" 2>/dev/null)
+assert_not_contains "$out_opus47" "Opus 4.5" "Opus 4.7 does not fall through to Opus 4.5"
+assert_not_contains "$out_opus47" "Opus 4.6" "Opus 4.7 does not fall through to Opus 4.6"
 
 # test_context_limit_format: 200000 → "200k", 1000000 → "1M"
 out_200k=$(echo '{"cwd":"/test","model":{"id":"claude-opus-4-6"},"context_window":{"total_input_tokens":50000,"total_output_tokens":5000,"context_window_size":200000}}' | "$PULSE" 2>/dev/null)

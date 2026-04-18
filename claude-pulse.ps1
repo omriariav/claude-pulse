@@ -1,4 +1,4 @@
-# claude-pulse.ps1 v3.1.2: Real-time token usage for Claude Code status line (Windows)
+# claude-pulse.ps1 v3.1.3: Real-time token usage for Claude Code status line (Windows)
 # Uses billing API (transcript) for accurate FULL context usage
 # Falls back to native context_window when transcript unavailable
 # Displays current model name and AI-generated conversation names
@@ -11,13 +11,18 @@ $data = $inputJson | ConvertFrom-Json
 $cwd = $data.cwd
 $model_id = if ($data.model.id) { $data.model.id } else { "claude-sonnet-4-5-20250929" }
 
-# Convert model ID to friendly name
+# Convert model ID to friendly name.
+# Ordered most-specific first: a shorter pattern (e.g. claude-opus-4*) would
+# otherwise shadow newer families like claude-opus-4-7.
 $model_name = switch -Wildcard ($model_id) {
+    "claude-opus-4-7*" { "Opus 4.7"; break }
     "claude-opus-4-6*" { "Opus 4.6"; break }
     "claude-opus-4*" { "Opus 4.5"; break }
     "claude-sonnet-4-6*" { "Sonnet 4.6"; break }
     "claude-sonnet-4-5*" { "Sonnet 4.5"; break }
     "claude-sonnet-4*" { "Sonnet 4.5"; break }
+    "claude-haiku-4-5*" { "Haiku 4.5"; break }
+    "claude-4-5-haiku*" { "Haiku 4.5"; break }
     "claude-haiku-3-5*" { "Haiku 3.5"; break }
     "claude-3-5-haiku*" { "Haiku 3.5"; break }
     "claude-sonnet-3-5*" { "Sonnet 3.5"; break }

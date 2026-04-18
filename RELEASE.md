@@ -1,5 +1,23 @@
 # Release Notes
 
+## v3.1.3 - Opus 4.7 & Haiku 4.5 Support
+
+**Released:** April 18, 2026
+
+### Bug Fixes
+
+- **Opus 4.7 misidentified as "Opus 4.5"** — the generic `claude-opus-4*` case pattern was shadowing the newer model. Added a more specific `claude-opus-4-7*` case above it. Patterns are now documented as "most-specific first".
+- **Haiku 4.5 not recognized** — previously fell through to the generic "Claude" fallback. Added `claude-haiku-4-5*` / `claude-4-5-haiku*` patterns.
+
+### Not Included
+
+- **Thinking/effort level display** — Claude Code 2.1.114 does not expose the current `/effort` level (`low`/`medium`/`high`/`xhigh`/`max`) in the statusline stdin JSON. Tracking upstream at [anthropics/claude-code#31987](https://github.com/anthropics/claude-code/issues/31987); will wire it up once the field lands.
+
+### Tests
+
+- 4 new entries in the model-detection matrix for `claude-opus-4-7*` and `claude-haiku-4-5*`
+- Regression assertion that Opus 4.7 output never contains "Opus 4.5" or "Opus 4.6"
+
 ## v3.1.2 - Minimal Mode Polish
 
 **Released:** April 5, 2026
