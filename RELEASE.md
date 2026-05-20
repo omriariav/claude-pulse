@@ -1,5 +1,18 @@
 # Release Notes
 
+## v3.1.4 - Red Alert: cat=14 resolution routing
+
+**Released:** May 20, 2026
+
+### Bug Fixes
+
+- **`⚠️ Pre-alert — be prepared` shown for "concern removed" updates** — Pikud HaOref's API uses `cat=14` as a junk drawer for both forward-looking pre-alerts (*"in the coming minutes expect alerts"*) and backward-looking resolutions (*"הוסר החשש לחדירת מחבלים"* — "concern of terrorist infiltration removed"). The daemon now detects resolution titles and skips the state write entirely (matching the existing `cat=10` "הסתיים" precedent), so the statusline never renders "be prepared" for a threat that was actually resolved.
+- **`cat=10` ended-event detection broadened** — extended the existing `הסתיים`-only check to share the same helper with `cat=14`, picking up gender/plural variants (`הוסרה`/`הוסרו`/`הסתיימה`/`הסתיימו`) and additional resolution verbs (`בוטל`/`בוטלה`/`בוטלו`, `נשלל`/`נשללה`/`נשללו`, `אין חשש`).
+
+### Tests
+
+- 19 new assertions in `test_resolution_titles.sh` covering 13 resolution variants and 6 legitimate pre-alert / active-alert titles (including the empty-title edge case).
+
 ## v3.1.3 - Opus 4.7 & Haiku 4.5 Support
 
 **Released:** April 18, 2026

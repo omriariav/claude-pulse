@@ -1,5 +1,5 @@
 #!/bin/bash
-# red-alert-daemon.sh v3.1.3: Background daemon for Pikud HaOref alert monitoring
+# red-alert-daemon.sh v3.1.4: Background daemon for Pikud HaOref alert monitoring
 # Polls the official alert API every 2 seconds and writes state to disk
 # Supports: normal mode (API), all mode (API, no filter), mock mode (offline testing)
 
@@ -48,6 +48,13 @@ write_state() {
     local tmp_file="${STATE_FILE}.$$"
     echo "$1" > "$tmp_file"
     mv -f "$tmp_file" "$STATE_FILE"
+}
+
+# Detect Pikud HaOref resolution titles ("threat removed/ended/cancelled/ruled out")
+# These arrive under cat=14 (or cat=10) and mean the OPPOSITE of "be prepared".
+is_resolution_title() {
+    local title="$1"
+    [[ "$title" =~ (הוסר|הוסרה|הוסרו|הסתיים|הסתיימה|הסתיימו|בוטל|בוטלה|בוטלו|נשלל|נשללה|נשללו|אין\ חשש) ]]
 }
 
 # Build state JSON safely using jq (handles quotes/escapes in API data)
@@ -522,18 +529,25 @@ while true; do
             write_state "$(build_state "$alert_id" "13" "$title" "$cities" "$cities_en" "$now" "$now")"
             ;;
         14)
-            # Pre-alert
-            log "Pre-alert received (id: $alert_id)"
-            cities_en=$(translate_cities "$cities")
-            write_state "$(build_state "$alert_id" "14" "$title" "$cities" "$cities_en" "$now" 0)"
-            if cities_match_filter "$cities" "$cities_en"; then
-                play_sound "pre_alert" "$SOUND_DIR/early.m4a" "$alert_id"
+            # cat=14 is a junk drawer: forward-looking pre-alerts AND backward-looking
+            # resolutions (e.g., "הוסר החשש", "נשלל החשש"). Resolutions must NOT render
+            # as "be prepared" — match cat=10 "הסתיים" behavior: log only, no state write,
+            # let any prior state expire naturally.
+            if is_resolution_title "$title"; then
+                log "RESOLUTION cat=14 routed=skip title=$title id=$alert_id cities=$cities"
+            else
+                log "Pre-alert received (id: $alert_id)"
+                cities_en=$(translate_cities "$cities")
+                write_state "$(build_state "$alert_id" "14" "$title" "$cities" "$cities_en" "$now" 0)"
+                if cities_match_filter "$cities" "$cities_en"; then
+                    play_sound "pre_alert" "$SOUND_DIR/early.m4a" "$alert_id"
+                fi
             fi
             ;;
         10)
             # Cat 10 has multiple meanings based on title
-            if [[ "$title" == *"הסתיים"* ]]; then
-                # Event ended — log only, let display_until expire naturally
+            if is_resolution_title "$title"; then
+                # Event ended/removed/cancelled — log only, let display_until expire naturally
                 # The red banner stops on its own via display_until_unix,
                 # then "Recent" tier shows for up to 5 min from first_seen
                 log "EVENT ENDED cat=$cat_val title=$title id=$alert_id cities=$cities"
