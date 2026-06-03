@@ -1,5 +1,26 @@
 # Release Notes
 
+## v3.2.0 - Generic model detection
+
+**Released:** June 3, 2026
+
+### Features
+
+- **Future model releases need no code change** — the modern ID scheme (`claude-<family>-<major>-<minor>`) is now parsed generically by a single regex, so a new release like **Opus 4.8** (and any future Sonnet/Haiku/Opus version) is recognized automatically. Both the full name (`Opus 4.8`) and the minimal-density short form (`Op4.8`) are derived from the ID. This replaces the per-model `case`/`switch` block that required a new branch — and a new release — for every model (cf. v3.1.3 for 4.7, v2.5.1 for Sonnet 4.6).
+- **`display_name` fallback for unknown IDs** — anything the parser doesn't recognize (e.g. an entirely new model *family*) now falls back to Claude Code's own `model.display_name` from the statusline JSON before defaulting to the literal "Claude", so it shows a real name instead of a generic one.
+
+### Bug Fixes
+
+- **Opus 4.8 misidentified as "Opus 4.5"** — `claude-opus-4-8` fell through to the generic `claude-opus-4*` arm. Fixed by the generic parser above. A ≤2-digit minor guard (bash) / `(?![0-9])` lookahead (PowerShell) ensures 8-digit release dates like `claude-opus-4-20250512` aren't misread as a minor version.
+
+### Internal
+
+- **CI** — added a GitHub Actions workflow that runs the full test suite on `macos-latest` (matching the script's real bash 3.2 + BSD-tooling target) for every PR and push to `main`.
+
+### Tests
+
+- New regression coverage: `claude-opus-4-8[1m]` (incl. the `[1m]` context suffix), generically-parsed `claude-sonnet-5-0`, and the `display_name` fallback path. Full suite now 210 assertions.
+
 ## v3.1.4 - Red Alert: cat=14 resolution routing
 
 **Released:** May 20, 2026

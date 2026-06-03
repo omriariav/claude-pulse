@@ -16,5 +16,12 @@ jobs:
       - name: Ensure jq
         run: command -v jq >/dev/null 2>&1 || brew install jq
 
+      - name: Configure git identity
+        # test_statusline.sh creates commits in temp repos; a clean runner has
+        # no global git identity, which would fail with "Author identity unknown".
+        run: |
+          git config --global user.email "ci@claude-pulse.test"
+          git config --global user.name "claude-pulse CI"
+
       - name: Run test suite
         run: bash tests/run_tests.sh

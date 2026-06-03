@@ -1,6 +1,6 @@
 # claude-pulse
 
-> Real-time token usage monitoring for Claude Code status line | **v3.1.4**
+> Real-time token usage monitoring for Claude Code status line | **v3.2.0**
 
 **claude-pulse** displays your current Claude Code token usage directly in your status line, helping you stay aware of context consumption without running `/context` manually.
 
@@ -295,6 +295,7 @@ You can! But claude-pulse offers:
 
 | Version | Highlights |
 |---------|-----------|
+| **v3.2.0** | Generic model detection — new Opus/Sonnet/Haiku versions (e.g. Opus 4.8) recognized with no code change; `display_name` fallback for unknown families; CI on macos-latest |
 | **v3.1.1** | KeepAlive fix, heavy mode alignment, user-level skills, OTA skill updates, setup portability |
 | **v3.1.0** | Git diff stats, `CLAUDE_PULSE_HIDE_DIFF` env var, heavy mode column alignment |
 | **v3.0.2** | Exponential backoff for API failures, daemon self-healing |
