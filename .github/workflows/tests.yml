@@ -1,0 +1,20 @@
+name: tests
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    # macOS runner matches the script's real target: bash 3.2 + BSD tooling
+    # (the suite uses BSD `sed -i ''` and `tail -r`, which differ on Linux).
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Ensure jq
+        run: command -v jq >/dev/null 2>&1 || brew install jq
+
+      - name: Run test suite
+        run: bash tests/run_tests.sh

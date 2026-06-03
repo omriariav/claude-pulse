@@ -10,28 +10,39 @@ $data = $inputJson | ConvertFrom-Json
 
 $cwd = $data.cwd
 $model_id = if ($data.model.id) { $data.model.id } else { "claude-sonnet-4-5-20250929" }
+$display_name = if ($data.model.display_name) { $data.model.display_name } else { "" }
 
 # Convert model ID to friendly name.
-# Ordered most-specific first: a shorter pattern (e.g. claude-opus-4*) would
-# otherwise shadow newer families like claude-opus-4-7.
-$model_name = switch -Wildcard ($model_id) {
-    "claude-opus-4-7*" { "Opus 4.7"; break }
-    "claude-opus-4-6*" { "Opus 4.6"; break }
-    "claude-opus-4*" { "Opus 4.5"; break }
-    "claude-sonnet-4-6*" { "Sonnet 4.6"; break }
-    "claude-sonnet-4-5*" { "Sonnet 4.5"; break }
-    "claude-sonnet-4*" { "Sonnet 4.5"; break }
-    "claude-haiku-4-5*" { "Haiku 4.5"; break }
-    "claude-4-5-haiku*" { "Haiku 4.5"; break }
-    "claude-haiku-3-5*" { "Haiku 3.5"; break }
-    "claude-3-5-haiku*" { "Haiku 3.5"; break }
-    "claude-sonnet-3-5*" { "Sonnet 3.5"; break }
-    "claude-3-5-sonnet*" { "Sonnet 3.5"; break }
-    "claude-opus-3*" { "Opus 3"; break }
-    "claude-3-opus*" { "Opus 3"; break }
-    "claude-sonnet-3-7*" { "Sonnet 3.7"; break }
-    "claude-3-7-sonnet*" { "Sonnet 3.7"; break }
-    default { "Claude" }
+#
+# The modern naming scheme is regular — claude-<family>-<major>-<minor> — so we
+# parse it generically and NEVER need a new branch per release (Opus 4.8, a
+# future Sonnet 5.0, etc. all "just work"). Only the irregular legacy IDs need
+# explicit rows, and anything unknown defers to Claude Code's own display_name.
+$model_name = $null
+if ($model_id -match '^claude-(opus|sonnet|haiku)-([0-9]+)-([0-9]{1,2})(?![0-9])') {
+    # The (?![0-9]) guard rejects 8-digit release dates (claude-opus-4-20250512),
+    # letting those fall through to the legacy table below.
+    $family = switch ($matches[1]) {
+        "opus"   { "Opus" }
+        "sonnet" { "Sonnet" }
+        "haiku"  { "Haiku" }
+    }
+    $model_name = "$family $($matches[2]).$($matches[3])"
+}
+
+if (-not $model_name) {
+    # Legacy / irregular IDs only — modern releases are handled above.
+    $model_name = switch -Wildcard ($model_id) {
+        "claude-opus-4*" { "Opus 4.5"; break }
+        "claude-sonnet-4*" { "Sonnet 4.5"; break }
+        "claude-4-5-haiku*" { "Haiku 4.5"; break }
+        "claude-3-5-haiku*" { "Haiku 3.5"; break }
+        "claude-3-5-sonnet*" { "Sonnet 3.5"; break }
+        "claude-opus-3*" { "Opus 3"; break }
+        "claude-3-opus*" { "Opus 3"; break }
+        "claude-3-7-sonnet*" { "Sonnet 3.7"; break }
+        default { if ($display_name) { $display_name } else { "Claude" } }
+    }
 }
 
 $context_limit = 200000
