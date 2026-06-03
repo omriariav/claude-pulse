@@ -55,59 +55,56 @@ fi
 # CWD shortening — basename for all densities (full path overflows terminal)
 short_cwd="$(basename "$cwd")"
 
-# Convert model ID to friendly name
-# Patterns are ordered most-specific first — a shorter pattern higher up would
-# shadow a more specific one (e.g. claude-opus-4* would catch claude-opus-4-7).
-case "$model_id" in
-    claude-opus-4-7*)
-        model_name="Opus 4.7"; model_short="Op4.7"
-        context_limit=200000
-        ;;
-    claude-opus-4-6*)
-        model_name="Opus 4.6"; model_short="Op4.6"
-        context_limit=200000
-        ;;
-    claude-opus-4*)
-        model_name="Opus 4.5"; model_short="Op4.5"
-        context_limit=200000
-        ;;
-    claude-sonnet-4-6*)
-        model_name="Sonnet 4.6"; model_short="Son4.6"
-        context_limit=200000
-        ;;
-    claude-sonnet-4-5*)
-        model_name="Sonnet 4.5"; model_short="Son4.5"
-        context_limit=200000
-        ;;
-    claude-sonnet-4*)
-        model_name="Sonnet 4.5"; model_short="Son4.5"
-        context_limit=200000
-        ;;
-    claude-haiku-4-5*|claude-4-5-haiku*)
-        model_name="Haiku 4.5"; model_short="Hai4.5"
-        context_limit=200000
-        ;;
-    claude-haiku-3-5*|claude-3-5-haiku*)
-        model_name="Haiku 3.5"; model_short="Hai3.5"
-        context_limit=200000
-        ;;
-    claude-sonnet-3-5*|claude-3-5-sonnet*)
-        model_name="Sonnet 3.5"; model_short="Son3.5"
-        context_limit=200000
-        ;;
-    claude-opus-3*|claude-3-opus*)
-        model_name="Opus 3"; model_short="Op3"
-        context_limit=200000
-        ;;
-    claude-sonnet-3-7*|claude-3-7-sonnet*)
-        model_name="Sonnet 3.7"; model_short="Son3.7"
-        context_limit=200000
-        ;;
-    *)
-        model_name="Claude"; model_short="Claude"
-        context_limit=200000
-        ;;
-esac
+# Convert model ID to friendly name.
+#
+# The modern naming scheme is regular — claude-<family>-<major>-<minor> — so we
+# parse it generically and NEVER need a new branch per release (Opus 4.8, a
+# future Sonnet 5.0, etc. all "just work"). Only the irregular legacy IDs
+# (version-first, no-minor base models, Opus 3) need explicit rows below, and
+# anything truly unknown defers to Claude Code's own model.display_name.
+context_limit=200000
+model_name=""; model_short=""
+
+if [[ "$model_id" =~ ^claude-(opus|sonnet|haiku)-([0-9]+)-([0-9]+) ]] \
+   && [[ ${#BASH_REMATCH[3]} -le 2 ]]; then
+    # Modern scheme. The ≤2-digit minor guard rejects 8-digit release dates
+    # (e.g. claude-opus-4-20250512), letting those fall through to legacy.
+    case "${BASH_REMATCH[1]}" in
+        opus)   model_name="Opus";   model_short="Op"  ;;
+        sonnet) model_name="Sonnet"; model_short="Son" ;;
+        haiku)  model_name="Haiku";  model_short="Hai" ;;
+    esac
+    model_name="$model_name ${BASH_REMATCH[2]}.${BASH_REMATCH[3]}"
+    model_short="$model_short${BASH_REMATCH[2]}.${BASH_REMATCH[3]}"
+fi
+
+if [[ -z "$model_name" ]]; then
+    # Legacy / irregular IDs only — modern releases are handled above.
+    case "$model_id" in
+        claude-opus-4*)
+            model_name="Opus 4.5"; model_short="Op4.5" ;;
+        claude-sonnet-4*)
+            model_name="Sonnet 4.5"; model_short="Son4.5" ;;
+        claude-4-5-haiku*)
+            model_name="Haiku 4.5"; model_short="Hai4.5" ;;
+        claude-3-5-haiku*)
+            model_name="Haiku 3.5"; model_short="Hai3.5" ;;
+        claude-3-5-sonnet*)
+            model_name="Sonnet 3.5"; model_short="Son3.5" ;;
+        claude-opus-3*|claude-3-opus*)
+            model_name="Opus 3"; model_short="Op3" ;;
+        claude-3-7-sonnet*)
+            model_name="Sonnet 3.7"; model_short="Son3.7" ;;
+        *)
+            # Unknown ID — defer to Claude Code's own friendly name if present.
+            if [[ -n "$display_name" ]]; then
+                model_name="$display_name"; model_short="$display_name"
+            else
+                model_name="Claude"; model_short="Claude"
+            fi
+            ;;
+    esac
+fi
 
 # Check for actual context window size from JSON (overrides hardcoded defaults)
 actual_limit=$(echo "$input" | jq -r '.context_window.context_window_size // null')

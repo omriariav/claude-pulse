@@ -56,8 +56,10 @@ Shows uncommitted changes (staged + unstaged) via `LC_ALL=C git diff HEAD --shor
 
 ### Model detection
 
-- Model patterns must be ordered **most specific first** in the case/switch block (e.g., `claude-opus-4-6*` before `claude-opus-4*`), otherwise more specific models match the generic pattern
-- Currently supported: Opus 4.7, Opus 4.6, Opus 4.5, Sonnet 4.6, Sonnet 4.5, Sonnet 3.7, Sonnet 3.5, Haiku 4.5, Haiku 3.5, Opus 3
+- **Generic-first parsing (no per-model maintenance)**: modern IDs follow `claude-<family>-<major>-<minor>` and are parsed by one regex (`^claude-(opus|sonnet|haiku)-([0-9]+)-([0-9]+)`), so new releases (Opus 4.8, a future Sonnet 5.0, …) are recognized with **zero code changes**. A ≤2-digit minor guard (bash) / `(?![0-9])` lookahead (PowerShell) rejects 8-digit release dates like `claude-opus-4-20250512` so they don't read as "Opus 4.20250512".
+- **Legacy table** handles only irregular IDs the parser can't: version-first names (`claude-3-5-sonnet`, `claude-4-5-haiku`), no-minor base-4 models (`claude-opus-4*` → "Opus 4.5", `claude-sonnet-4*` → "Sonnet 4.5"), and `claude-opus-3`/`claude-3-opus` → "Opus 3", `claude-3-7-sonnet` → "Sonnet 3.7".
+- **Unknown IDs** fall back to Claude Code's own `model.display_name` from the statusline JSON (it already computes a friendly name), and only then to the literal "Claude".
+- Recognized today: Opus 4.8, Opus 4.7, Opus 4.6, Opus 4.5, Sonnet 4.6, Sonnet 4.5, Sonnet 3.7, Sonnet 3.5, Haiku 4.5, Haiku 3.5, Opus 3 — plus any future modern-scheme release automatically.
 - **Not exposed by Claude Code statusline JSON** (as of 2.1.114): thinking/effort level (`/effort low|medium|high|xhigh|max`). There's no reliable way to display it until Claude Code adds it to the stdin payload — see https://github.com/anthropics/claude-code/issues/31987.
 
 ### Conversation name feature

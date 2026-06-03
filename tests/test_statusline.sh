@@ -22,6 +22,8 @@ assert_contains "$output" "test" "basic output has cwd"
 
 # test_model_detection: each model ID maps to correct name
 for pair in \
+    "claude-opus-4-8[1m]:Opus 4.8" \
+    "claude-opus-4-8:Opus 4.8" \
     "claude-opus-4-7-20260401:Opus 4.7" \
     "claude-opus-4-7:Opus 4.7" \
     "claude-opus-4-6-20250929:Opus 4.6" \
@@ -48,6 +50,19 @@ done
 out_opus47=$(echo '{"cwd":"/test","model":{"id":"claude-opus-4-7-20260401"},"context_window":{"total_input_tokens":50000,"total_output_tokens":5000,"context_window_size":1000000}}' | "$PULSE" 2>/dev/null)
 assert_not_contains "$out_opus47" "Opus 4.5" "Opus 4.7 does not fall through to Opus 4.5"
 assert_not_contains "$out_opus47" "Opus 4.6" "Opus 4.7 does not fall through to Opus 4.6"
+
+# Regression: Opus 4.8 (incl. [1m] context suffix) must not fall through to Opus 4.5.
+out_opus48=$(echo '{"cwd":"/test","model":{"id":"claude-opus-4-8[1m]"},"context_window":{"total_input_tokens":50000,"total_output_tokens":5000,"context_window_size":1000000}}' | "$PULSE" 2>/dev/null)
+assert_contains "$out_opus48" "Opus 4.8" "Opus 4.8 detected from claude-opus-4-8[1m]"
+assert_not_contains "$out_opus48" "Opus 4.5" "Opus 4.8 does not fall through to Opus 4.5"
+
+# Future-proofing: an unseen modern ID is parsed generically, not shown as bare "Claude".
+out_future=$(echo '{"cwd":"/test","model":{"id":"claude-sonnet-5-0-20270101"},"context_window":{"total_input_tokens":50000,"total_output_tokens":5000,"context_window_size":200000}}' | "$PULSE" 2>/dev/null)
+assert_contains "$out_future" "Sonnet 5.0" "unseen modern ID (sonnet-5-0) parsed generically"
+
+# Unknown / non-modern ID falls back to Claude Code's own model.display_name.
+out_dn=$(echo '{"cwd":"/test","model":{"id":"claude-neo-quantum","display_name":"Neo Quantum"},"context_window":{"total_input_tokens":50000,"total_output_tokens":5000,"context_window_size":200000}}' | "$PULSE" 2>/dev/null)
+assert_contains "$out_dn" "Neo Quantum" "unknown ID falls back to display_name"
 
 # test_context_limit_format: 200000 → "200k", 1000000 → "1M"
 out_200k=$(echo '{"cwd":"/test","model":{"id":"claude-opus-4-6"},"context_window":{"total_input_tokens":50000,"total_output_tokens":5000,"context_window_size":200000}}' | "$PULSE" 2>/dev/null)

@@ -149,14 +149,17 @@ The script:
 
 ## Supported Models
 
-- Claude Opus 4.7 (200k default, 1M with extended context)
-- Claude Opus 4.6 (200k default, 1M with extended context)
+Modern model IDs (`claude-<family>-<major>-<minor>`) are parsed generically, so
+new releases like Opus 4.8 are recognized automatically — no update required.
+
+- Claude Opus 4.8 (200k default, 1M with extended context)
+- Claude Opus 4.7 / 4.6 (200k default, 1M with extended context)
 - Claude Opus 4.5 (200k context)
 - Claude Sonnet 4.x (200k context)
 - Claude 3.5 Sonnet (200k context)
 - Claude Haiku 4.5 (200k context)
 - Claude Haiku 3.5 (200k context)
-- Unknown models default to 200k
+- Unknown models fall back to Claude Code's own `display_name`, else default to 200k
 
 ## Configuration
 
