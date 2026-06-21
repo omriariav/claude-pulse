@@ -1,1 +1,4 @@
 .DS_Store
+
+# Local agent/session artifacts (not part of the project)
+.pm-os/

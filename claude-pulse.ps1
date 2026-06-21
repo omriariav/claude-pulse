@@ -1,4 +1,4 @@
-# claude-pulse.ps1 v3.2.0: Real-time token usage for Claude Code status line (Windows)
+# claude-pulse.ps1 v3.3.0: Real-time token usage for Claude Code status line (Windows)
 # Uses billing API (transcript) for accurate FULL context usage
 # Falls back to native context_window when transcript unavailable
 # Displays current model name and AI-generated conversation names
@@ -7,6 +7,28 @@
 # Read JSON from stdin
 $inputJson = [Console]::In.ReadToEnd()
 $data = $inputJson | ConvertFrom-Json
+
+function Get-NestedValue {
+    param($Object, [string[]]$Path)
+    $current = $Object
+    foreach ($part in $Path) {
+        if ($null -eq $current) { return $null }
+        $prop = $current.PSObject.Properties[$part]
+        if ($null -eq $prop) { return $null }
+        $current = $prop.Value
+    }
+    return $current
+}
+
+function Convert-ToPulseString {
+    param($Value)
+    if ($null -eq $Value) { return "" }
+    if ($Value -is [array]) {
+        if ($Value.Count -eq 0 -or $null -eq $Value[0]) { return "" }
+        return [string]$Value[0]
+    }
+    return [string]$Value
+}
 
 $cwd = $data.cwd
 $model_id = if ($data.model.id) { $data.model.id } else { "claude-sonnet-4-5-20250929" }
@@ -44,6 +66,15 @@ if (-not $model_name) {
         default { if ($display_name) { $display_name } else { "Claude" } }
     }
 }
+
+# Short model label for compact densities (Opus 4.8 -> Op4.8, Sonnet 3.7 -> Son3.7)
+$model_short = $model_name -replace '^Opus ', 'Op' -replace '^Sonnet ', 'Son' -replace '^Haiku ', 'Hai'
+
+# Rate limits / cost / effort (Pro/Max + recent Claude Code only; null when absent)
+$rate_5h = Convert-ToPulseString (Get-NestedValue $data @('rate_limits', 'five_hour', 'used_percentage'))
+$rate_7d = Convert-ToPulseString (Get-NestedValue $data @('rate_limits', 'seven_day', 'used_percentage'))
+$cost_usd = Convert-ToPulseString (Get-NestedValue $data @('cost', 'total_cost_usd'))
+$effort = Convert-ToPulseString (Get-NestedValue $data @('effort', 'level'))
 
 $context_limit = 200000
 
@@ -460,5 +491,163 @@ if ($env:RED_ALERT_CITIES -or $env:RED_ALERT_MODE) {
     }
 }
 
+# Taboola density — single line, reference's 16-color ANSI palette (theme-adaptive),
+# NO_COLOR honored. Mirrors the bash `taboola` branch. Opt-in via CLAUDE_PULSE_DENSITY=taboola.
+if ($env:CLAUDE_PULSE_DENSITY -eq 'taboola') {
+    if (-not $env:NO_COLOR) {
+        $tRst = "`e[0m"; $tDim = "`e[2m"; $tRed = "`e[31m"; $tGrn = "`e[32m"
+        $tYel = "`e[33m"; $tBlu = "`e[34m"; $tMag = "`e[35m"; $tCyn = "`e[36m"
+    } else {
+        $tRst = ""; $tDim = ""; $tRed = ""; $tGrn = ""; $tYel = ""; $tBlu = ""; $tMag = ""; $tCyn = ""
+    }
+    $tSep = "$tDim│$tRst"
+
+    # Working dir: last folder only
+    $segDir = "$tBlu$(Split-Path -Leaf $cwd)$tRst"
+
+    # Git: branch + ahead/behind (cached refs) + dirty/staged marker
+    $segGit = ""
+    if ($branch) {
+        $segGit = "$tGrn$branch$tRst"
+        $up = ""
+        try {
+            $up = git -C $cwd rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>$null
+            if ($LASTEXITCODE -ne 0) { $up = "" }
+        } catch { $up = "" }
+        if ($up) {
+            $ahead = "0"
+            $behind = "0"
+            try {
+                $ahead = git -C $cwd rev-list --count "$up..HEAD" 2>$null
+                if ($LASTEXITCODE -ne 0 -or -not $ahead) { $ahead = "0" }
+            } catch { $ahead = "0" }
+            try {
+                $behind = git -C $cwd rev-list --count "HEAD..$up" 2>$null
+                if ($LASTEXITCODE -ne 0 -or -not $behind) { $behind = "0" }
+            } catch { $behind = "0" }
+            $sync = ""
+            if ($ahead -and $ahead -ne "0") { $sync = "↑$ahead" }
+            if ($behind -and $behind -ne "0") { if ($sync) { $sync += " " }; $sync += "↓$behind" }
+            if ($sync) { $segGit += " $tYel[$sync]$tRst" }
+        }
+        $dirtyExit = 0
+        try {
+            git -C $cwd --no-optional-locks diff --quiet 2>$null
+            $dirtyExit = $LASTEXITCODE
+        } catch { $dirtyExit = 0 }
+        if ($dirtyExit -eq 1) {
+            $segGit += " $tRed*$tRst"
+        } elseif ($dirtyExit -eq 0) {
+            $stagedExit = 0
+            try {
+                git -C $cwd --no-optional-locks diff --cached --quiet 2>$null
+                $stagedExit = $LASTEXITCODE
+            } catch { $stagedExit = 0 }
+            if ($stagedExit -eq 1) { $segGit += " $tGrn+$tRst" }
+        }
+    }
+
+    # amq-squad team/session: team = .workstream from nearest .amq-squad/team.json
+    $segAmq = ""
+    if (Get-Command amq -ErrorAction SilentlyContinue) {
+        $amqTeam = ""
+        $d = $cwd
+        while ($d) {
+            $tj = [System.IO.Path]::Combine($d, ".amq-squad", "team.json")
+            if (Test-Path $tj) {
+                try { $amqTeam = Convert-ToPulseString (Get-NestedValue (Get-Content $tj -Raw | ConvertFrom-Json) @('workstream')) } catch { $amqTeam = "" }
+                break
+            }
+            $root = [System.IO.Path]::GetPathRoot($d)
+            if ($d -eq $root) { break }
+            $parent = Split-Path -Parent $d
+            if (-not $parent -or $parent -eq $d) { break }
+            $d = $parent
+        }
+        $amqSess = ""
+        try {
+            Push-Location $cwd -ErrorAction Stop
+            $amqOutput = & amq env --session-name 2>&1
+            $amqExit = $LASTEXITCODE
+            if ($amqExit -eq 0 -and $amqOutput -and -not (($amqOutput | Out-String) -match '(?i)\b(error|exception|failed|traceback|not found|command not found)\b')) {
+                $amqSess = Convert-ToPulseString $amqOutput
+            } else {
+                $amqSess = ""
+            }
+        }
+        catch { $amqSess = "" } finally { Pop-Location -ErrorAction SilentlyContinue }
+        if (-not $amqSess -and $env:AM_ROOT -and $env:AM_BASE_ROOT -and $env:AM_ROOT -ne $env:AM_BASE_ROOT) {
+            $amqSess = Split-Path -Leaf $env:AM_ROOT
+        }
+        $amqTxt = ""
+        if ($amqTeam -and $amqSess -and $amqTeam -ne $amqSess) { $amqTxt = "amq:$amqTeam/$amqSess" }
+        elseif ($amqTeam) { $amqTxt = "amq:$amqTeam" }
+        elseif ($amqSess) { $amqTxt = "amq:$amqSess" }
+        if ($amqTxt -and $env:AM_ME) { $amqTxt += "@$($env:AM_ME)" }
+        if ($amqTxt) { $segAmq = "$tYel$amqTxt$tRst" } else { $segAmq = "${tDim}amq:n/a$tRst" }
+    }
+
+    # Model + effort (effort absent when the model doesn't support the param).
+    # Effort abbreviated (low→L medium→M high→H xhigh→XH max→MAX), magenta (readable, not dim).
+    $segModel = "$tCyn$model_short$tRst"
+    if ($effort) {
+        $effShort = switch ($effort) {
+            'low' { 'L' } 'medium' { 'M' } 'high' { 'H' } 'xhigh' { 'XH' } 'max' { 'MAX' }
+            default { $effort }
+        }
+        $segModel += " $tMag$effShort$tRst"
+    }
+
+    # Context remaining %, health-colored
+    $rem = 100 - $percent
+    if ($rem -lt 0) { $rem = 0 }
+    $cc = if ($rem -le 20) { $tRed } elseif ($rem -le 40) { $tYel } else { $tGrn }
+    $segCtx = "$cc$rem%$tRst"
+
+    # 5h / 7d rate limits, health-colored
+    $segRates = ""
+    $rate5Parsed = 0.0
+    if ($null -ne $rate_5h -and "$rate_5h" -ne "" -and [double]::TryParse("$rate_5h", [ref]$rate5Parsed)) {
+        $r5 = [int][math]::Floor($rate5Parsed)
+        $c5 = if ($r5 -ge 80) { $tRed } elseif ($r5 -ge 50) { $tYel } else { $tGrn }
+        $segRates = "${c5}5h:$r5%$tRst"
+        $rate7Parsed = 0.0
+        if ($null -ne $rate_7d -and "$rate_7d" -ne "" -and [double]::TryParse("$rate_7d", [ref]$rate7Parsed)) {
+            $r7 = [int][math]::Floor($rate7Parsed)
+            $c7 = if ($r7 -ge 80) { $tRed } elseif ($r7 -ge 50) { $tYel } else { $tGrn }
+            $segRates += " ${c7}7d:$r7%$tRst"
+        }
+    }
+
+    # API cost (cents precision; skip $0 and when hidden). TryParse guards a
+    # non-numeric/empty value from throwing on the cast (which would blank the line).
+    $segCost = ""
+    $costParsed = 0.0
+    if (-not $env:CLAUDE_PULSE_HIDE_COST -and "$cost_usd" -ne "" -and
+        [double]::TryParse("$cost_usd", [ref]$costParsed) -and $costParsed -gt 0) {
+        $costStr = $costParsed.ToString('0.00')
+        # Neutral color (default fg) — cost isn't a health signal.
+        $segCost = "`$${costStr}"
+    }
+
+    # Alert: full text for a real alert; compact the idle daemon line to its glyph
+    $segAlert = ""
+    if ($alert_segment) {
+        $a = $alert_segment -replace "^`n", ""
+        if ($a -match 'daemon ON') { $segAlert = "$tGrn🟢$tRst" }
+        elseif ($a -match 'not running') { $segAlert = "$tDim🔕$tRst" }
+        else { $segAlert = $a }
+    }
+
+    # NOTE: no update_badge segment here — OTA update notifications are a bash-only
+    # feature (update.sh); the PowerShell statusline has never rendered them.
+    $parts = @($segDir, $segGit, $segAmq, $segModel, $segCtx, $segRates, $segCost, $segAlert) | Where-Object { $_ }
+    Write-Host ($parts -join " $tSep ")
+    exit 0
+}
+
 # Output format: "🧠 [████░░] 72% · 🤖 Model · 💬 Topic · 🌿 branch 📁 /path"
 Write-Host "${color}🧠 $bar ${percent}%${reset} · 🤖 ${model_name} (${context_label})${name_segment}${pr_segment}${diff_segment} · 📁 ${cwd}${alert_segment}"
+
+# Always exit success — a non-zero exit makes Claude Code render an empty statusline
+exit 0

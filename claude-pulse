@@ -1,5 +1,5 @@
 #!/bin/bash
-# claude-pulse v3.2.0: Real-time token usage for Claude Code status line
+# claude-pulse v3.3.0: Real-time token usage for Claude Code status line
 # Uses billing API (transcript) for accurate FULL context usage
 # Falls back to native context_window when transcript unavailable
 # Displays current model name and AI-generated conversation names
@@ -18,11 +18,12 @@ C_RESET=$'\033[0m'
 C_RED_BG=$'\033[41;97m'
 C_GREEN_BG=$'\033[42;97m'
 C_CYAN=$'\033[38;2;139;233;253m'
+C_BLUE=$'\033[38;2;130;170;255m'
 C_YELLOW_BG=$'\033[43;30m'
 SEP="${C_DIM}│${C_RESET}"
 
 # Extract values from JSON (single jq call, Unit Separator delimiter)
-IFS=$'\x1f' read -r cwd transcript_path session_id model_id rate_5h rate_7d session_name cost_usd used_pct display_name < <(
+IFS=$'\x1f' read -r cwd transcript_path session_id model_id rate_5h rate_7d session_name cost_usd used_pct display_name effort < <(
     echo "$input" | jq -j '[
         .cwd // "",
         .transcript_path // "",
@@ -33,7 +34,8 @@ IFS=$'\x1f' read -r cwd transcript_path session_id model_id rate_5h rate_7d sess
         .session_name // "",
         (.cost.total_cost_usd // "" | tostring),
         (.context_window.used_percentage // "" | tostring),
-        .model.display_name // ""
+        .model.display_name // "",
+        (.effort.level // "")
     ] | join("\u001f")' 2>/dev/null
 )
 
@@ -43,7 +45,7 @@ term_width=${COLUMNS:-$(tput cols 2>/dev/null || echo 120)}
 if [[ -n "$CLAUDE_PULSE_DENSITY" ]]; then
     # Normalize to lowercase; fall back to regular for invalid values
     density=$(echo "$CLAUDE_PULSE_DENSITY" | tr '[:upper:]' '[:lower:]')
-    case "$density" in minimal|regular|heavy) ;; *) density="regular" ;; esac
+    case "$density" in minimal|regular|heavy|taboola) ;; *) density="regular" ;; esac
 elif (( term_width < 100 )); then
     density="minimal"
 elif (( term_width >= 160 )); then
@@ -903,4 +905,135 @@ case "$density" in
             printf "\n${_line2}"
         fi
         ;;
+    taboola)
+        # Single line — mimics taboola-sales-skills/.claude/statusline.sh exactly:
+        # standard 16-color ANSI (theme-adaptive, not truecolor), DIM │ separators,
+        # NO_COLOR honored. Enriched with claude-pulse data: amq-squad, effort, 5h/7d, cost, alerts.
+        if [[ -z "${NO_COLOR:-}" ]]; then
+            T_RST=$'\033[0m'; T_DIM=$'\033[2m'; T_RED=$'\033[31m'; T_GRN=$'\033[32m'
+            T_YEL=$'\033[33m'; T_BLU=$'\033[34m'; T_MAG=$'\033[35m'; T_CYN=$'\033[36m'
+        else
+            T_RST=""; T_DIM=""; T_RED=""; T_GRN=""; T_YEL=""; T_BLU=""; T_MAG=""; T_CYN=""
+        fi
+        T_SEP="${T_DIM}│${T_RST}"
+
+        # Working dir: last folder only (basename), no path prefix
+        _tb_dir="${T_BLU}${short_cwd}${T_RST}"
+
+        # Git: branch + ahead/behind (cached refs, no fetch) + dirty/staged marker
+        _tb_git=""
+        if [[ -n "$branch" ]] && git -C "$cwd" rev-parse --is-inside-work-tree &>/dev/null; then
+            _tb_git="${T_GRN}${branch}${T_RST}"
+            _tb_up=$(git -C "$cwd" rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null)
+            if [[ -n "$_tb_up" ]]; then
+                _tb_ahead=$(git -C "$cwd" rev-list --count "${_tb_up}..HEAD" 2>/dev/null || echo 0)
+                _tb_behind=$(git -C "$cwd" rev-list --count "HEAD..${_tb_up}" 2>/dev/null || echo 0)
+                _tb_sync=""
+                [[ "$_tb_ahead" != "0" ]] && _tb_sync="↑${_tb_ahead}"
+                [[ "$_tb_behind" != "0" ]] && { [[ -n "$_tb_sync" ]] && _tb_sync="${_tb_sync} "; _tb_sync="${_tb_sync}↓${_tb_behind}"; }
+                [[ -n "$_tb_sync" ]] && _tb_git="${_tb_git} ${T_YEL}[${_tb_sync}]${T_RST}"
+            fi
+            if ! git -C "$cwd" --no-optional-locks diff --quiet 2>/dev/null; then
+                _tb_git="${_tb_git} ${T_RED}*${T_RST}"
+            elif ! git -C "$cwd" --no-optional-locks diff --cached --quiet 2>/dev/null; then
+                _tb_git="${_tb_git} ${T_GRN}+${T_RST}"
+            fi
+        fi
+
+        # amq-squad team/session (reference parity + squad team name)
+        # team = .workstream from nearest .amq-squad/team.json; session = amq env --session-name
+        _tb_amq=""
+        if command -v amq &>/dev/null; then
+            _amq_team="" _amq_dir="$cwd"
+            while [[ -n "$_amq_dir" && "$_amq_dir" != "/" ]]; do
+                if [[ -f "$_amq_dir/.amq-squad/team.json" ]]; then
+                    _amq_team=$(jq -r '.workstream // empty' "$_amq_dir/.amq-squad/team.json" 2>/dev/null)
+                    break
+                fi
+                _amq_dir=$(dirname "$_amq_dir")
+            done
+            _amq_sess=$(cd "$cwd" 2>/dev/null && amq env --session-name 2>/dev/null)
+            if [[ -z "$_amq_sess" ]] && [[ -n "${AM_ROOT:-}" ]] && [[ -n "${AM_BASE_ROOT:-}" ]] && [[ "$AM_ROOT" != "$AM_BASE_ROOT" ]]; then
+                _amq_sess=$(basename "$AM_ROOT")
+            fi
+            if [[ -n "$_amq_team" ]] && [[ -n "$_amq_sess" ]] && [[ "$_amq_team" != "$_amq_sess" ]]; then
+                _tb_amq="amq:${_amq_team}/${_amq_sess}"
+            elif [[ -n "$_amq_team" ]]; then
+                _tb_amq="amq:${_amq_team}"
+            elif [[ -n "$_amq_sess" ]]; then
+                _tb_amq="amq:${_amq_sess}"
+            fi
+            if [[ -n "$_tb_amq" ]]; then
+                [[ -n "${AM_ME:-}" ]] && _tb_amq="${_tb_amq}@${AM_ME}"
+                _tb_amq="${T_YEL}${_tb_amq}${T_RST}"
+            else
+                # amq installed but no squad/session here — show neutral n/a
+                _tb_amq="${T_DIM}amq:n/a${T_RST}"
+            fi
+        fi
+
+        # Model + effort — short label (e.g. Op4.8); effort absent when unsupported.
+        # Effort abbreviated (low→L medium→M high→H xhigh→XH max→MAX), magenta (readable, not dim).
+        _tb_model="${T_CYN}${model_short}${T_RST}"
+        if [[ -n "$effort" ]]; then
+            case "$effort" in
+                low)   _tb_eff="L"   ;; medium) _tb_eff="M" ;; high) _tb_eff="H" ;;
+                xhigh) _tb_eff="XH"  ;; max)    _tb_eff="MAX" ;;
+                *)     _tb_eff="$effort" ;;
+            esac
+            _tb_model="${_tb_model} ${T_MAG}${_tb_eff}${T_RST}"
+        fi
+
+        # Context remaining %, health-colored (mimics reference's free-space view)
+        _tb_rem=$(( 100 - percent )); (( _tb_rem < 0 )) && _tb_rem=0
+        if   (( _tb_rem <= 20 )); then _tb_cc="$T_RED"
+        elif (( _tb_rem <= 40 )); then _tb_cc="$T_YEL"
+        else                           _tb_cc="$T_GRN"; fi
+        _tb_ctx="${_tb_cc}${_tb_rem}%${T_RST}"
+
+        # 5h / 7d rate limits (Pro/Max only — absent otherwise), health-colored
+        _tb_rates=""
+        if [[ -n "$rate_5h" ]]; then
+            if   (( rate_5h_int >= 80 )); then _tb_5c="$T_RED"
+            elif (( rate_5h_int >= 50 )); then _tb_5c="$T_YEL"
+            else                               _tb_5c="$T_GRN"; fi
+            _tb_rates="${_tb_5c}5h:${rate_5h_int}%${T_RST}"
+            if [[ -n "$rate_7d" ]]; then
+                if   (( rate_7d_int >= 80 )); then _tb_7c="$T_RED"
+                elif (( rate_7d_int >= 50 )); then _tb_7c="$T_YEL"
+                else                               _tb_7c="$T_GRN"; fi
+                _tb_rates="${_tb_rates} ${_tb_7c}7d:${rate_7d_int}%${T_RST}"
+            fi
+        fi
+
+        # API cost (cents precision; skip $0 and when hidden) — neutral color (default fg),
+        # since cost isn't a "health" signal that green/yellow/red would imply.
+        _tb_cost=""
+        if [[ -z "$CLAUDE_PULSE_HIDE_COST" ]] && [[ -n "$cost_usd" ]] && [[ "$cost_usd" != "null" ]] \
+           && awk "BEGIN{exit !($cost_usd>0)}" 2>/dev/null; then
+            _tb_cost="\$$(printf '%.2f' "$cost_usd")"
+        fi
+
+        # Alert: keep full text for a real alert; compact the idle daemon line to its glyph
+        _tb_alert=""
+        if [[ -n "$alert_segment" ]]; then
+            _tb_alert="${alert_segment#\\n}"
+        elif [[ -n "$alert_indicator" ]]; then
+            if   [[ "$alert_indicator" == *"🔕"* ]]; then _tb_alert="${T_DIM}🔕${T_RST}"
+            elif [[ "$alert_indicator" == *"🟡"* ]]; then _tb_alert="${T_YEL}🟡${T_RST}"
+            else                                          _tb_alert="${T_GRN}🟢${T_RST}"; fi
+        fi
+
+        # Join non-empty segments with " │ "
+        _tb_out=""
+        for _tb_seg in "$_tb_dir" "$_tb_git" "$_tb_amq" "$_tb_model" "$_tb_ctx" "$_tb_rates" "$_tb_cost" "$_tb_alert" "$update_badge"; do
+            [[ -z "$_tb_seg" ]] && continue
+            [[ -n "$_tb_out" ]] && _tb_out="${_tb_out} ${T_SEP} "
+            _tb_out="${_tb_out}${_tb_seg}"
+        done
+        printf '%s' "$_tb_out"
+        ;;
 esac
+
+# Always exit success — a non-zero exit makes Claude Code render an empty statusline
+exit 0

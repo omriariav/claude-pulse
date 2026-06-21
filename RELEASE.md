@@ -1,5 +1,26 @@
 # Release Notes
 
+## v3.3.0 - Taboola density mode
+
+**Released:** June 21, 2026
+
+### Features
+
+- **New opt-in `taboola` density** (`CLAUDE_PULSE_DENSITY=taboola`) — a slick, emoji-free single line modeled on a hand-rolled team statusline. Never auto-selected; opt-in only. Layout: `project │ branch [↑2] * │ amq:team │ Op4.8 high │ 38% │ 5h:23% 7d:41% │ $0.42 │ 🟢`
+  - **Theme-adaptive colors** — uses standard 16-color ANSI (`\033[34m` etc.) instead of claude-pulse's truecolor RGB, so it follows the terminal's own color scheme. Honors `NO_COLOR`.
+  - **amq-squad team/session** — surfaces the active squad as `amq:team/session@handle`. Team comes from the nearest `.amq-squad/team.json` (`.workstream`, walking up from `cwd`); session from `amq env --session-name` (or `$AM_ROOT` basename); handle from `$AM_ME`. Each part is independently optional.
+  - **Reasoning effort** — now that Claude Code exposes `.effort.level` (`low|medium|high|xhigh|max`) in the statusline JSON, it's shown as a magenta, abbreviated suffix on the model (`low→L medium→M high→H xhigh→XH max→MAX`; omitted when the model doesn't support the param).
+  - **Remaining context %** (health-colored), **5h/7d rate limits**, and **API cost** (cents precision, respects `CLAUDE_PULSE_HIDE_COST`) on the same line. Last-folder-only directory and short model label (`Op4.8`).
+  - **PowerShell parity** — the same mode is implemented in `claude-pulse.ps1`.
+
+### Bug Fixes
+
+- **Statusline rendered nothing despite producing output** — the script ended on a `[[ ... ]]` test that could evaluate false, so it exited non-zero; recent Claude Code treats a non-zero statusline exit as a failure and shows an empty line. The script now always `exit 0`.
+
+### Tests
+
+- New `tests/test_taboola.sh` suite (21 assertions): basename dir, short model label, effort, remaining %, 5h/7d, cost show/hide/\$0, 16-color (not truecolor) palette, `NO_COLOR` stripping, amq team detection, and exit-0.
+
 ## v3.2.0 - Generic model detection
 
 **Released:** June 3, 2026
