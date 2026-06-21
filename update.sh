@@ -1,5 +1,5 @@
 #!/bin/bash
-# claude-pulse update.sh v3.2.0: OTA update manager
+# claude-pulse update.sh v3.3.0: OTA update manager
 # Checks GitHub releases, downloads, validates, and applies updates atomically
 # Triggered by SessionStart hook — runs in background, singleton-locked
 

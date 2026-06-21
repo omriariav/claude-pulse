@@ -1,6 +1,6 @@
 # claude-pulse
 
-> Real-time token usage monitoring for Claude Code status line | **v3.2.0**
+> Real-time token usage monitoring for Claude Code status line | **v3.3.0**
 
 **claude-pulse** displays your current Claude Code token usage directly in your status line, helping you stay aware of context consumption without running `/context` manually.
 
@@ -45,12 +45,18 @@
 🧠 10% Op4.6(1M) │ Topic Name │ #42 project │ 3f +45 -12 │ ⚡5h: 5% 7d: 2% │ 🟢
 ```
 
+**Taboola** (opt-in, slick single line — emoji-free, theme-adaptive 16-color ANSI):
+```
+project │ feat/bar [↑2] * │ amq:my-squad │ Op4.8 high │ 38% │ 5h:23% 7d:41% │ $0.42 │ 🟢
+```
+A compact, no-frills line modeled on a hand-rolled team statusline: last-folder dir, branch with ahead/behind + dirty marker, amq-squad team/session, short model label + reasoning **effort**, **remaining** context %, 5h/7d limits, API cost, and the alert glyph. Uses your terminal's own theme colors (not truecolor) and honors `NO_COLOR`. Enable with `CLAUDE_PULSE_DENSITY=taboola`.
+
 Color changes based on usage:
 - 🟢 **Green** (<50% used): Plenty of room
 - 🟡 **Yellow** (50-79% used): Moderate usage
 - 🔴 **Red** (≥80% used): Running high, consider compacting
 
-Density auto-detects from terminal width. Override with `CLAUDE_PULSE_DENSITY=minimal|regular|heavy`.
+The minimal/regular/heavy tiers auto-detect from terminal width. Override with `CLAUDE_PULSE_DENSITY=minimal|regular|heavy`, or opt into the `taboola` single-line mode (never auto-selected).
 
 ## Installation
 
@@ -237,8 +243,9 @@ Supports English city names, Hebrew names, zone-specific names (e.g., `Tel Aviv 
 
 | Variable | Values | Description |
 |----------|--------|-------------|
-| `CLAUDE_PULSE_DENSITY` | `minimal` / `regular` / `heavy` | Override auto-detected density tier |
-| `CLAUDE_PULSE_HIDE_COST` | `1` | Hide session cost (💰) in heavy mode — recommended for Max/Pro |
+| `CLAUDE_PULSE_DENSITY` | `minimal` / `regular` / `heavy` / `taboola` | Override auto-detected density tier (`taboola` = opt-in slick single line) |
+| `CLAUDE_PULSE_HIDE_COST` | `1` | Hide session cost (💰) in heavy/taboola mode — recommended for Max/Pro |
+| `NO_COLOR` | (any) | Strip all ANSI color in `taboola` mode |
 | `CLAUDE_PULSE_HIDE_DIFF` | `1` | Hide git diff stats (📝) |
 | `RED_ALERT_CITIES` | comma-separated | Filter alerts to specific cities/zones |
 | `RED_ALERT_MODE` | `all` / `mock` | `all` = every alert. `mock` = offline test data |
@@ -295,6 +302,7 @@ You can! But claude-pulse offers:
 
 | Version | Highlights |
 |---------|-----------|
+| **v3.3.0** | New opt-in `taboola` density — slick single-line, theme-adaptive 16-color ANSI, with amq-squad team/session, reasoning effort, 5h/7d limits, API cost & `NO_COLOR`; fix: statusline now always exits 0 (a non-zero exit made Claude Code render nothing) |
 | **v3.2.0** | Generic model detection — new Opus/Sonnet/Haiku versions (e.g. Opus 4.8) recognized with no code change; `display_name` fallback for unknown families; CI on macos-latest |
 | **v3.1.1** | KeepAlive fix, heavy mode alignment, user-level skills, OTA skill updates, setup portability |
 | **v3.1.0** | Git diff stats, `CLAUDE_PULSE_HIDE_DIFF` env var, heavy mode column alignment |

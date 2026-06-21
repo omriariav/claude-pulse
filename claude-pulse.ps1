@@ -1,4 +1,4 @@
-# claude-pulse.ps1 v3.2.0: Real-time token usage for Claude Code status line (Windows)
+# claude-pulse.ps1 v3.3.0: Real-time token usage for Claude Code status line (Windows)
 # Uses billing API (transcript) for accurate FULL context usage
 # Falls back to native context_window when transcript unavailable
 # Displays current model name and AI-generated conversation names
@@ -44,6 +44,15 @@ if (-not $model_name) {
         default { if ($display_name) { $display_name } else { "Claude" } }
     }
 }
+
+# Short model label for compact densities (Opus 4.8 -> Op4.8, Sonnet 3.7 -> Son3.7)
+$model_short = $model_name -replace '^Opus ', 'Op' -replace '^Sonnet ', 'Son' -replace '^Haiku ', 'Hai'
+
+# Rate limits / cost / effort (Pro/Max + recent Claude Code only; null when absent)
+$rate_5h = $data.rate_limits.five_hour.used_percentage
+$rate_7d = $data.rate_limits.seven_day.used_percentage
+$cost_usd = $data.cost.total_cost_usd
+$effort = $data.effort.level
 
 $context_limit = 200000
 
@@ -458,6 +467,112 @@ if ($env:RED_ALERT_CITIES -or $env:RED_ALERT_MODE) {
             $alert_segment = "`n`e[90m🔕 Alerts daemon not running${reset}"
         }
     }
+}
+
+# Taboola density — single line, reference's 16-color ANSI palette (theme-adaptive),
+# NO_COLOR honored. Mirrors the bash `taboola` branch. Opt-in via CLAUDE_PULSE_DENSITY=taboola.
+if ($env:CLAUDE_PULSE_DENSITY -eq 'taboola') {
+    if (-not $env:NO_COLOR) {
+        $tRst = "`e[0m"; $tDim = "`e[2m"; $tRed = "`e[31m"; $tGrn = "`e[32m"
+        $tYel = "`e[33m"; $tBlu = "`e[34m"; $tCyn = "`e[36m"
+    } else {
+        $tRst = ""; $tDim = ""; $tRed = ""; $tGrn = ""; $tYel = ""; $tBlu = ""; $tCyn = ""
+    }
+    $tSep = "$tDim│$tRst"
+
+    # Working dir: last folder only
+    $segDir = "$tBlu$(Split-Path -Leaf $cwd)$tRst"
+
+    # Git: branch + ahead/behind (cached refs) + dirty/staged marker
+    $segGit = ""
+    if ($branch) {
+        $segGit = "$tGrn$branch$tRst"
+        $up = git -C $cwd rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>$null
+        if ($up) {
+            $ahead = git -C $cwd rev-list --count "$up..HEAD" 2>$null
+            $behind = git -C $cwd rev-list --count "HEAD..$up" 2>$null
+            $sync = ""
+            if ($ahead -and $ahead -ne "0") { $sync = "↑$ahead" }
+            if ($behind -and $behind -ne "0") { if ($sync) { $sync += " " }; $sync += "↓$behind" }
+            if ($sync) { $segGit += " $tYel[$sync]$tRst" }
+        }
+        git -C $cwd --no-optional-locks diff --quiet 2>$null
+        if ($LASTEXITCODE -ne 0) {
+            $segGit += " $tRed*$tRst"
+        } else {
+            git -C $cwd --no-optional-locks diff --cached --quiet 2>$null
+            if ($LASTEXITCODE -ne 0) { $segGit += " $tGrn+$tRst" }
+        }
+    }
+
+    # amq-squad team/session: team = .workstream from nearest .amq-squad/team.json
+    $segAmq = ""
+    if (Get-Command amq -ErrorAction SilentlyContinue) {
+        $amqTeam = ""
+        $d = $cwd
+        while ($d -and $d -ne [System.IO.Path]::GetPathRoot($d)) {
+            $tj = Join-Path $d ".amq-squad" "team.json"
+            if (Test-Path $tj) {
+                try { $amqTeam = (Get-Content $tj -Raw | ConvertFrom-Json).workstream } catch {}
+                break
+            }
+            $d = Split-Path -Parent $d
+        }
+        $amqSess = ""
+        try { Push-Location $cwd -ErrorAction Stop; $amqSess = amq env --session-name 2>$null; Pop-Location } catch {}
+        if (-not $amqSess -and $env:AM_ROOT -and $env:AM_BASE_ROOT -and $env:AM_ROOT -ne $env:AM_BASE_ROOT) {
+            $amqSess = Split-Path -Leaf $env:AM_ROOT
+        }
+        $amqTxt = ""
+        if ($amqTeam -and $amqSess -and $amqTeam -ne $amqSess) { $amqTxt = "amq:$amqTeam/$amqSess" }
+        elseif ($amqTeam) { $amqTxt = "amq:$amqTeam" }
+        elseif ($amqSess) { $amqTxt = "amq:$amqSess" }
+        if ($amqTxt -and $env:AM_ME) { $amqTxt += "@$($env:AM_ME)" }
+        if ($amqTxt) { $segAmq = "$tYel$amqTxt$tRst" }
+    }
+
+    # Model + effort (effort null when the model doesn't support the param)
+    $segModel = "$tCyn$model_short$tRst"
+    if ($effort) { $segModel += " $tDim$effort$tRst" }
+
+    # Context remaining %, health-colored
+    $rem = 100 - $percent
+    if ($rem -lt 0) { $rem = 0 }
+    $cc = if ($rem -le 20) { $tRed } elseif ($rem -le 40) { $tYel } else { $tGrn }
+    $segCtx = "$cc$rem%$tRst"
+
+    # 5h / 7d rate limits, health-colored
+    $segRates = ""
+    if ($null -ne $rate_5h -and "$rate_5h" -ne "") {
+        $r5 = [int][math]::Floor([double]$rate_5h)
+        $c5 = if ($r5 -ge 80) { $tRed } elseif ($r5 -ge 50) { $tYel } else { $tGrn }
+        $segRates = "${c5}5h:$r5%$tRst"
+        if ($null -ne $rate_7d -and "$rate_7d" -ne "") {
+            $r7 = [int][math]::Floor([double]$rate_7d)
+            $c7 = if ($r7 -ge 80) { $tRed } elseif ($r7 -ge 50) { $tYel } else { $tGrn }
+            $segRates += " ${c7}7d:$r7%$tRst"
+        }
+    }
+
+    # API cost (cents precision; skip $0 and when hidden)
+    $segCost = ""
+    if (-not $env:CLAUDE_PULSE_HIDE_COST -and $null -ne $cost_usd -and [double]$cost_usd -gt 0) {
+        $costStr = ([double]$cost_usd).ToString('0.00')
+        $segCost = "${tGrn}`$${costStr}${tRst}"
+    }
+
+    # Alert: full text for a real alert; compact the idle daemon line to its glyph
+    $segAlert = ""
+    if ($alert_segment) {
+        $a = $alert_segment -replace "^`n", ""
+        if ($a -match 'daemon ON') { $segAlert = "$tGrn🟢$tRst" }
+        elseif ($a -match 'not running') { $segAlert = "$tDim🔕$tRst" }
+        else { $segAlert = $a }
+    }
+
+    $parts = @($segDir, $segGit, $segAmq, $segModel, $segCtx, $segRates, $segCost, $segAlert) | Where-Object { $_ }
+    Write-Host ($parts -join " $tSep ")
+    exit 0
 }
 
 # Output format: "🧠 [████░░] 72% · 🤖 Model · 💬 Topic · 🌿 branch 📁 /path"

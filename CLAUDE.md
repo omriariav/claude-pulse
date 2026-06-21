@@ -43,12 +43,14 @@ Three tiers auto-detected from terminal width, overridable with `CLAUDE_PULSE_DE
 - **Minimal** (< 100 cols): Single line, `│` separators, no bar, abbreviated model (`Son4.6`), rates + alerts inline
 - **Regular** (100–159 cols): Two lines, emoji dividers (double-space), 10-char bare bar, `%2d` rate padding for alignment
 - **Heavy** (≥ 160 cols): Two lines, ` · ` dot separators, 20-char bracketed bar, full branch, optional session cost
+- **Taboola** (opt-in only, never auto-detected): Single line, dim `│` separators, mimics `taboola-sales-skills/.claude/statusline.sh` (blue last-folder-only dir via `short_cwd`, green branch + yellow `[↑n ↓n]` ahead/behind + `*`/`+` dirty marker, cyan short model label `model_short` e.g. `Op4.8`). Deliberately emoji-free (matches the reference's slick look) — plain colored tokens only. Uses the reference's exact palette: **standard 16-color ANSI** (`\033[34m` blue, `32` green, `33` yellow, `36` cyan, `31` red, `\033[2m` dim separator) — theme-adaptive, *not* claude-pulse's truecolor RGB — and honors **`NO_COLOR`** (taboola branch only; the other densities keep their RGB palette). Enriched with claude-pulse data: **amq-squad** team/session (`amq:team/session@handle`), model **effort** (dim `high`), context **remaining %** (health-colored, billing-accurate `100 - percent`), **5h/7d** rate limits (`5h:23% 7d:41%`), **API cost** (`$0.42`, cents precision), and the **red-alert** indicator (idle daemon compacts to a bare glyph; a live alert keeps its full banner). Respects `CLAUDE_PULSE_HIDE_COST`. Set via `CLAUDE_PULSE_DENSITY=taboola`.
+  - **amq-squad detection**: team = `.workstream` from the nearest `.amq-squad/team.json` (walks up from `cwd`); session = `amq env --session-name` (falls back to `basename $AM_ROOT` when it differs from `$AM_BASE_ROOT`); handle = `$AM_ME`. Each part is independently optional — the whole segment is omitted when no squad is active. Adds ~1 `amq` subprocess per render in taboola mode only.
 
 Key alignment rules:
 - **Regular** line 2: `%2d` for 5h, `%2d` for 7d — `🟢` lands under `🤖`
 - **Heavy** line 2: `%2d` for 5h, `%3d` for 7d, `%4s` for cost — `·` before `🟢` stacks with `·` after context `%`
 
-Env vars: `CLAUDE_PULSE_DENSITY` (minimal/regular/heavy), `CLAUDE_PULSE_HIDE_COST` (set to hide `💰` in heavy mode — recommended for Max/Pro users), `CLAUDE_PULSE_HIDE_DIFF` (set to hide `📝` git diff stats)
+Env vars: `CLAUDE_PULSE_DENSITY` (minimal/regular/heavy/taboola), `CLAUDE_PULSE_HIDE_COST` (set to hide `💰` in heavy/taboola mode — recommended for Max/Pro users), `CLAUDE_PULSE_HIDE_DIFF` (set to hide `📝` git diff stats)
 
 ### Git diff stats (v3.1.0)
 
@@ -60,7 +62,7 @@ Shows uncommitted changes (staged + unstaged) via `LC_ALL=C git diff HEAD --shor
 - **Legacy table** handles only irregular IDs the parser can't: version-first names (`claude-3-5-sonnet`, `claude-4-5-haiku`), no-minor base-4 models (`claude-opus-4*` → "Opus 4.5", `claude-sonnet-4*` → "Sonnet 4.5"), and `claude-opus-3`/`claude-3-opus` → "Opus 3", `claude-3-7-sonnet` → "Sonnet 3.7".
 - **Unknown IDs** fall back to Claude Code's own `model.display_name` from the statusline JSON (it already computes a friendly name), and only then to the literal "Claude".
 - Recognized today: Opus 4.8, Opus 4.7, Opus 4.6, Opus 4.5, Sonnet 4.6, Sonnet 4.5, Sonnet 3.7, Sonnet 3.5, Haiku 4.5, Haiku 3.5, Opus 3 — plus any future modern-scheme release automatically.
-- **Not exposed by Claude Code statusline JSON** (as of 2.1.114): thinking/effort level (`/effort low|medium|high|xhigh|max`). There's no reliable way to display it until Claude Code adds it to the stdin payload — see https://github.com/anthropics/claude-code/issues/31987.
+- **Effort/thinking level — now exposed** (Claude Code added it after 2.1.114; confirmed present in 2.1.181): `.effort.level` (`low|medium|high|xhigh|max`; `xhigh` covers ultracode; absent when the model doesn't support the param) and `.thinking.enabled`. Parsed into the `effort` variable and rendered by **taboola** mode. The older claim in https://github.com/anthropics/claude-code/issues/31987 is obsolete.
 
 ### Conversation name feature
 
@@ -149,7 +151,9 @@ Claude Code provides these fields to the statusline command via stdin:
 ```
 session_id, transcript_path, cwd, model.id, model.display_name,
 workspace, version, cost, context_window (total_input_tokens,
-total_output_tokens, context_window_size)
+total_output_tokens, context_window_size, used_percentage,
+remaining_percentage), rate_limits (five_hour/seven_day .used_percentage),
+effort.level, thinking.enabled
 ```
 
-**Not available**: effort/thinking level, conversation name — these are not exposed by Claude Code in the statusline JSON.
+**Not available**: conversation name — still not exposed by Claude Code in the statusline JSON (native `session_name` from `/rename` is, however). Effort/thinking level became available after 2.1.114.
