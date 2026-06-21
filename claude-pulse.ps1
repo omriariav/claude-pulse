@@ -553,7 +553,7 @@ if ($env:CLAUDE_PULSE_DENSITY -eq 'taboola') {
         $amqTeam = ""
         $d = $cwd
         while ($d) {
-            $tj = Join-Path $d ".amq-squad" "team.json"
+            $tj = [System.IO.Path]::Combine($d, ".amq-squad", "team.json")
             if (Test-Path $tj) {
                 try { $amqTeam = Convert-ToPulseString (Get-NestedValue (Get-Content $tj -Raw | ConvertFrom-Json) @('workstream')) } catch { $amqTeam = "" }
                 break
@@ -639,6 +639,8 @@ if ($env:CLAUDE_PULSE_DENSITY -eq 'taboola') {
         else { $segAlert = $a }
     }
 
+    # NOTE: no update_badge segment here — OTA update notifications are a bash-only
+    # feature (update.sh); the PowerShell statusline has never rendered them.
     $parts = @($segDir, $segGit, $segAmq, $segModel, $segCtx, $segRates, $segCost, $segAlert) | Where-Object { $_ }
     Write-Host ($parts -join " $tSep ")
     exit 0

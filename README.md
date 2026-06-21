@@ -47,7 +47,7 @@
 
 **Taboola** (opt-in, slick single line — emoji-free, theme-adaptive 16-color ANSI):
 ```
-project │ feat/bar [↑2] * │ amq:my-squad │ Op4.8 high │ 38% │ 5h:23% 7d:41% │ $0.42 │ 🟢
+project │ feat/bar [↑2] * │ amq:my-squad │ Op4.8 H │ 38% │ 5h:23% 7d:41% │ $0.42 │ 🟢
 ```
 A compact, no-frills line modeled on a hand-rolled team statusline: last-folder dir, branch with ahead/behind + dirty marker, amq-squad team/session, short model label + reasoning **effort**, **remaining** context %, 5h/7d limits, API cost, and the alert glyph. Uses your terminal's own theme colors (not truecolor) and honors `NO_COLOR`. Enable with `CLAUDE_PULSE_DENSITY=taboola`.
 
