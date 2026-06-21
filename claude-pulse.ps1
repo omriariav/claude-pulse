@@ -8,6 +8,28 @@
 $inputJson = [Console]::In.ReadToEnd()
 $data = $inputJson | ConvertFrom-Json
 
+function Get-NestedValue {
+    param($Object, [string[]]$Path)
+    $current = $Object
+    foreach ($part in $Path) {
+        if ($null -eq $current) { return $null }
+        $prop = $current.PSObject.Properties[$part]
+        if ($null -eq $prop) { return $null }
+        $current = $prop.Value
+    }
+    return $current
+}
+
+function Convert-ToPulseString {
+    param($Value)
+    if ($null -eq $Value) { return "" }
+    if ($Value -is [array]) {
+        if ($Value.Count -eq 0 -or $null -eq $Value[0]) { return "" }
+        return [string]$Value[0]
+    }
+    return [string]$Value
+}
+
 $cwd = $data.cwd
 $model_id = if ($data.model.id) { $data.model.id } else { "claude-sonnet-4-5-20250929" }
 $display_name = if ($data.model.display_name) { $data.model.display_name } else { "" }
@@ -49,10 +71,10 @@ if (-not $model_name) {
 $model_short = $model_name -replace '^Opus ', 'Op' -replace '^Sonnet ', 'Son' -replace '^Haiku ', 'Hai'
 
 # Rate limits / cost / effort (Pro/Max + recent Claude Code only; null when absent)
-$rate_5h = $data.rate_limits.five_hour.used_percentage
-$rate_7d = $data.rate_limits.seven_day.used_percentage
-$cost_usd = $data.cost.total_cost_usd
-$effort = $data.effort.level
+$rate_5h = Convert-ToPulseString (Get-NestedValue $data @('rate_limits', 'five_hour', 'used_percentage'))
+$rate_7d = Convert-ToPulseString (Get-NestedValue $data @('rate_limits', 'seven_day', 'used_percentage'))
+$cost_usd = Convert-ToPulseString (Get-NestedValue $data @('cost', 'total_cost_usd'))
+$effort = Convert-ToPulseString (Get-NestedValue $data @('effort', 'level'))
 
 $context_limit = 200000
 
@@ -487,21 +509,41 @@ if ($env:CLAUDE_PULSE_DENSITY -eq 'taboola') {
     $segGit = ""
     if ($branch) {
         $segGit = "$tGrn$branch$tRst"
-        $up = git -C $cwd rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>$null
+        $up = ""
+        try {
+            $up = git -C $cwd rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>$null
+            if ($LASTEXITCODE -ne 0) { $up = "" }
+        } catch { $up = "" }
         if ($up) {
-            $ahead = git -C $cwd rev-list --count "$up..HEAD" 2>$null
-            $behind = git -C $cwd rev-list --count "HEAD..$up" 2>$null
+            $ahead = "0"
+            $behind = "0"
+            try {
+                $ahead = git -C $cwd rev-list --count "$up..HEAD" 2>$null
+                if ($LASTEXITCODE -ne 0 -or -not $ahead) { $ahead = "0" }
+            } catch { $ahead = "0" }
+            try {
+                $behind = git -C $cwd rev-list --count "HEAD..$up" 2>$null
+                if ($LASTEXITCODE -ne 0 -or -not $behind) { $behind = "0" }
+            } catch { $behind = "0" }
             $sync = ""
             if ($ahead -and $ahead -ne "0") { $sync = "↑$ahead" }
             if ($behind -and $behind -ne "0") { if ($sync) { $sync += " " }; $sync += "↓$behind" }
             if ($sync) { $segGit += " $tYel[$sync]$tRst" }
         }
-        git -C $cwd --no-optional-locks diff --quiet 2>$null
-        if ($LASTEXITCODE -ne 0) {
+        $dirtyExit = 0
+        try {
+            git -C $cwd --no-optional-locks diff --quiet 2>$null
+            $dirtyExit = $LASTEXITCODE
+        } catch { $dirtyExit = 0 }
+        if ($dirtyExit -eq 1) {
             $segGit += " $tRed*$tRst"
-        } else {
-            git -C $cwd --no-optional-locks diff --cached --quiet 2>$null
-            if ($LASTEXITCODE -ne 0) { $segGit += " $tGrn+$tRst" }
+        } elseif ($dirtyExit -eq 0) {
+            $stagedExit = 0
+            try {
+                git -C $cwd --no-optional-locks diff --cached --quiet 2>$null
+                $stagedExit = $LASTEXITCODE
+            } catch { $stagedExit = 0 }
+            if ($stagedExit -eq 1) { $segGit += " $tGrn+$tRst" }
         }
     }
 
@@ -510,17 +552,30 @@ if ($env:CLAUDE_PULSE_DENSITY -eq 'taboola') {
     if (Get-Command amq -ErrorAction SilentlyContinue) {
         $amqTeam = ""
         $d = $cwd
-        while ($d -and $d -ne [System.IO.Path]::GetPathRoot($d)) {
+        while ($d) {
             $tj = Join-Path $d ".amq-squad" "team.json"
             if (Test-Path $tj) {
-                try { $amqTeam = (Get-Content $tj -Raw | ConvertFrom-Json).workstream } catch {}
+                try { $amqTeam = Convert-ToPulseString (Get-NestedValue (Get-Content $tj -Raw | ConvertFrom-Json) @('workstream')) } catch { $amqTeam = "" }
                 break
             }
-            $d = Split-Path -Parent $d
+            $root = [System.IO.Path]::GetPathRoot($d)
+            if ($d -eq $root) { break }
+            $parent = Split-Path -Parent $d
+            if (-not $parent -or $parent -eq $d) { break }
+            $d = $parent
         }
         $amqSess = ""
-        try { Push-Location $cwd -ErrorAction Stop; $amqSess = amq env --session-name 2>$null }
-        catch {} finally { Pop-Location -ErrorAction SilentlyContinue }
+        try {
+            Push-Location $cwd -ErrorAction Stop
+            $amqOutput = & amq env --session-name 2>&1
+            $amqExit = $LASTEXITCODE
+            if ($amqExit -eq 0 -and $amqOutput -and -not (($amqOutput | Out-String) -match '(?i)\b(error|exception|failed|traceback|not found|command not found)\b')) {
+                $amqSess = Convert-ToPulseString $amqOutput
+            } else {
+                $amqSess = ""
+            }
+        }
+        catch { $amqSess = "" } finally { Pop-Location -ErrorAction SilentlyContinue }
         if (-not $amqSess -and $env:AM_ROOT -and $env:AM_BASE_ROOT -and $env:AM_ROOT -ne $env:AM_BASE_ROOT) {
             $amqSess = Split-Path -Leaf $env:AM_ROOT
         }
@@ -544,12 +599,14 @@ if ($env:CLAUDE_PULSE_DENSITY -eq 'taboola') {
 
     # 5h / 7d rate limits, health-colored
     $segRates = ""
-    if ($null -ne $rate_5h -and "$rate_5h" -ne "") {
-        $r5 = [int][math]::Floor([double]$rate_5h)
+    $rate5Parsed = 0.0
+    if ($null -ne $rate_5h -and "$rate_5h" -ne "" -and [double]::TryParse("$rate_5h", [ref]$rate5Parsed)) {
+        $r5 = [int][math]::Floor($rate5Parsed)
         $c5 = if ($r5 -ge 80) { $tRed } elseif ($r5 -ge 50) { $tYel } else { $tGrn }
         $segRates = "${c5}5h:$r5%$tRst"
-        if ($null -ne $rate_7d -and "$rate_7d" -ne "") {
-            $r7 = [int][math]::Floor([double]$rate_7d)
+        $rate7Parsed = 0.0
+        if ($null -ne $rate_7d -and "$rate_7d" -ne "" -and [double]::TryParse("$rate_7d", [ref]$rate7Parsed)) {
+            $r7 = [int][math]::Floor($rate7Parsed)
             $c7 = if ($r7 -ge 80) { $tRed } elseif ($r7 -ge 50) { $tYel } else { $tGrn }
             $segRates += " ${c7}7d:$r7%$tRst"
         }
@@ -558,9 +615,10 @@ if ($env:CLAUDE_PULSE_DENSITY -eq 'taboola') {
     # API cost (cents precision; skip $0 and when hidden). TryParse guards a
     # non-numeric/empty value from throwing on the cast (which would blank the line).
     $segCost = ""
+    $costParsed = 0.0
     if (-not $env:CLAUDE_PULSE_HIDE_COST -and "$cost_usd" -ne "" -and
-        [double]::TryParse("$cost_usd", [ref]$null) -and [double]$cost_usd -gt 0) {
-        $costStr = ([double]$cost_usd).ToString('0.00')
+        [double]::TryParse("$cost_usd", [ref]$costParsed) -and $costParsed -gt 0) {
+        $costStr = $costParsed.ToString('0.00')
         $segCost = "${tGrn}`$${costStr}${tRst}"
     }
 
