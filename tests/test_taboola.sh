@@ -48,11 +48,32 @@ assert_contains "$out" $'\033[36m' "taboola: uses ANSI cyan (36) for model"
 out=$(run_taboola "/tmp" | strip)
 assert_contains "$out" "%" "taboola: shows a percentage"
 
-# Effort surfaced when present, omitted when absent
+# Effort surfaced when present (abbreviated), omitted when absent
 out=$(run_taboola "/tmp" '{"effort":{"level":"high"}}' | strip)
-assert_contains "$out" "high" "taboola: shows effort level"
+assert_contains "$out" "Op4.8 H" "taboola: abbreviates effort high→H"
+out=$(run_taboola "/tmp" '{"effort":{"level":"xhigh"}}' | strip)
+assert_contains "$out" "Op4.8 XH" "taboola: abbreviates effort xhigh→XH"
+out=$(run_taboola "/tmp" '{"effort":{"level":"max"}}' | strip)
+assert_contains "$out" "Op4.8 MAX" "taboola: abbreviates effort max→MAX"
 out=$(run_taboola "/tmp" | strip)
-assert_not_contains "$out" "high" "taboola: no effort when absent"
+assert_not_contains "$out" "Op4.8 H" "taboola: no effort suffix when absent"
+# Effort uses magenta (35), not dim (2) — dim was too dark
+out=$(run_taboola "/tmp" '{"effort":{"level":"high"}}')
+assert_contains "$out" $'\033[35m' "taboola: effort uses magenta (35)"
+
+# Tri-color health (#4): context window remaining green/yellow/red.
+# /tmp is not a git repo, so red/yellow can only come from the context segment here.
+out=$(run_taboola "/tmp" '{"context_window":{"total_input_tokens":196000,"total_output_tokens":3000,"context_window_size":200000}}')
+assert_contains "$out" $'\033[31m' "taboola: context RED when nearly full (<=20% left)"
+out=$(run_taboola "/tmp" '{"context_window":{"total_input_tokens":130000,"total_output_tokens":0,"context_window_size":200000}}')
+assert_contains "$out" $'\033[33m' "taboola: context YELLOW at ~35% left"
+out=$(run_taboola "/tmp" '{"context_window":{"total_input_tokens":40000,"total_output_tokens":0,"context_window_size":200000}}')
+assert_contains "$out" $'\033[32m' "taboola: context GREEN with plenty left"
+
+# Tri-color health (#4): rate limits show the right value + threshold colors
+out=$(run_taboola "/tmp" '{"rate_limits":{"five_hour":{"used_percentage":85},"seven_day":{"used_percentage":62}}}' | strip)
+assert_contains "$out" "5h:85%" "taboola: 5h value (red threshold)"
+assert_contains "$out" "7d:62%" "taboola: 7d value (yellow threshold)"
 
 # 5h / 7d rate limits
 out=$(run_taboola "/tmp" '{"rate_limits":{"five_hour":{"used_percentage":23.5},"seven_day":{"used_percentage":41.2}}}' | strip)
@@ -82,8 +103,11 @@ echo '{"workstream":"my-squad","members":[]}' > "$squad_dir/.amq-squad/team.json
 if command -v amq &>/dev/null; then
     out=$(run_taboola "$squad_dir/sub" | strip)
     assert_contains "$out" "amq:my-squad" "taboola: amq team from nearest team.json (walks up)"
+    # Non-squad dir (amq installed but no team/session) → amq:n/a
+    out=$(run_taboola "/tmp" | strip)
+    assert_contains "$out" "amq:n/a" "taboola: amq:n/a when amq present but no squad"
 else
-    echo "  (skipping amq test — amq not installed)"
+    echo "  (skipping amq tests — amq not installed)"
 fi
 
 # Exit code is 0 (statusline must never fail-exit, or Claude Code renders nothing)

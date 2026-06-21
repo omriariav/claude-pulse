@@ -496,9 +496,9 @@ if ($env:RED_ALERT_CITIES -or $env:RED_ALERT_MODE) {
 if ($env:CLAUDE_PULSE_DENSITY -eq 'taboola') {
     if (-not $env:NO_COLOR) {
         $tRst = "`e[0m"; $tDim = "`e[2m"; $tRed = "`e[31m"; $tGrn = "`e[32m"
-        $tYel = "`e[33m"; $tBlu = "`e[34m"; $tCyn = "`e[36m"
+        $tYel = "`e[33m"; $tBlu = "`e[34m"; $tMag = "`e[35m"; $tCyn = "`e[36m"
     } else {
-        $tRst = ""; $tDim = ""; $tRed = ""; $tGrn = ""; $tYel = ""; $tBlu = ""; $tCyn = ""
+        $tRst = ""; $tDim = ""; $tRed = ""; $tGrn = ""; $tYel = ""; $tBlu = ""; $tMag = ""; $tCyn = ""
     }
     $tSep = "$tDim│$tRst"
 
@@ -584,12 +584,19 @@ if ($env:CLAUDE_PULSE_DENSITY -eq 'taboola') {
         elseif ($amqTeam) { $amqTxt = "amq:$amqTeam" }
         elseif ($amqSess) { $amqTxt = "amq:$amqSess" }
         if ($amqTxt -and $env:AM_ME) { $amqTxt += "@$($env:AM_ME)" }
-        if ($amqTxt) { $segAmq = "$tYel$amqTxt$tRst" }
+        if ($amqTxt) { $segAmq = "$tYel$amqTxt$tRst" } else { $segAmq = "${tDim}amq:n/a$tRst" }
     }
 
-    # Model + effort (effort null when the model doesn't support the param)
+    # Model + effort (effort absent when the model doesn't support the param).
+    # Effort abbreviated (low→L medium→M high→H xhigh→XH max→MAX), magenta (readable, not dim).
     $segModel = "$tCyn$model_short$tRst"
-    if ($effort) { $segModel += " $tDim$effort$tRst" }
+    if ($effort) {
+        $effShort = switch ($effort) {
+            'low' { 'L' } 'medium' { 'M' } 'high' { 'H' } 'xhigh' { 'XH' } 'max' { 'MAX' }
+            default { $effort }
+        }
+        $segModel += " $tMag$effShort$tRst"
+    }
 
     # Context remaining %, health-colored
     $rem = 100 - $percent
@@ -619,7 +626,8 @@ if ($env:CLAUDE_PULSE_DENSITY -eq 'taboola') {
     if (-not $env:CLAUDE_PULSE_HIDE_COST -and "$cost_usd" -ne "" -and
         [double]::TryParse("$cost_usd", [ref]$costParsed) -and $costParsed -gt 0) {
         $costStr = $costParsed.ToString('0.00')
-        $segCost = "${tGrn}`$${costStr}${tRst}"
+        # Neutral color (default fg) — cost isn't a health signal.
+        $segCost = "`$${costStr}"
     }
 
     # Alert: full text for a real alert; compact the idle daemon line to its glyph
