@@ -519,7 +519,8 @@ if ($env:CLAUDE_PULSE_DENSITY -eq 'taboola') {
             $d = Split-Path -Parent $d
         }
         $amqSess = ""
-        try { Push-Location $cwd -ErrorAction Stop; $amqSess = amq env --session-name 2>$null; Pop-Location } catch {}
+        try { Push-Location $cwd -ErrorAction Stop; $amqSess = amq env --session-name 2>$null }
+        catch {} finally { Pop-Location -ErrorAction SilentlyContinue }
         if (-not $amqSess -and $env:AM_ROOT -and $env:AM_BASE_ROOT -and $env:AM_ROOT -ne $env:AM_BASE_ROOT) {
             $amqSess = Split-Path -Leaf $env:AM_ROOT
         }
@@ -554,9 +555,11 @@ if ($env:CLAUDE_PULSE_DENSITY -eq 'taboola') {
         }
     }
 
-    # API cost (cents precision; skip $0 and when hidden)
+    # API cost (cents precision; skip $0 and when hidden). TryParse guards a
+    # non-numeric/empty value from throwing on the cast (which would blank the line).
     $segCost = ""
-    if (-not $env:CLAUDE_PULSE_HIDE_COST -and $null -ne $cost_usd -and [double]$cost_usd -gt 0) {
+    if (-not $env:CLAUDE_PULSE_HIDE_COST -and "$cost_usd" -ne "" -and
+        [double]::TryParse("$cost_usd", [ref]$null) -and [double]$cost_usd -gt 0) {
         $costStr = ([double]$cost_usd).ToString('0.00')
         $segCost = "${tGrn}`$${costStr}${tRst}"
     }
@@ -577,3 +580,6 @@ if ($env:CLAUDE_PULSE_DENSITY -eq 'taboola') {
 
 # Output format: "🧠 [████░░] 72% · 🤖 Model · 💬 Topic · 🌿 branch 📁 /path"
 Write-Host "${color}🧠 $bar ${percent}%${reset} · 🤖 ${model_name} (${context_label})${name_segment}${pr_segment}${diff_segment} · 📁 ${cwd}${alert_segment}"
+
+# Always exit success — a non-zero exit makes Claude Code render an empty statusline
+exit 0
