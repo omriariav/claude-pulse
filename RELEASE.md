@@ -1,5 +1,23 @@
 # Release Notes
 
+## v3.3.1 - amq-squad current-pane identity
+
+**Released:** June 29, 2026
+
+### Bug Fixes
+
+- **`taboola` mode showed the wrong amq-squad context** — it read `.workstream` from the nearest `.amq-squad/team.json` (always the *default* profile), so a pane launched from a *named* profile showed the stale default workstream (e.g. `amq:v1-0-0-reshape/v2-11-0@developer`) instead of the active profile's identity (`amq:codex-v2-11-0/v2-11-0@developer`). Resolution now targets the **current pane**, not the first profile found on disk.
+  - **Precedence ladder** (`_resolve_amq_identity`): (1) env-keyed launch record — `AM_ROOT`+`AM_ME` locate this agent's `launch.json`, whose `team_profile` is authoritative; (2) amq-squad launch metadata matched by tmux pane id (`$TMUX_PANE`), used as a fallback even when `AM_ROOT` is set but stale; (3) env/`amq env` session, profile disambiguated from disk; (4) discovery only when no current identity is provable.
+  - **Explicit degraded marker** — when a squad context exists but the active profile can't be proven, shows `amq:?` rather than silently picking the wrong profile.
+  - **Nested `<profile>/<session>` `AM_ROOT` layout** supported (e.g. `.agent-mail/codex-v2-12-0/v2-12-0`); `AM_ROOT` normalized to absolute; a stale/nonexistent `AM_ROOT` no longer wins over a live session or suppresses pane-id recovery.
+  - **Rendered consistently** as `amq:<profile>/<session>@<handle>` (proven default profile shows `default/<session>`).
+  - **PowerShell parity** — the same ladder is implemented in `claude-pulse.ps1`.
+
+### Tests
+
+- `tests/test_taboola.sh` adds regression coverage: named profile resolves over a stale default, tmux pane-id match, ambiguous → `amq:?`, proven default profile, and stale-`AM_ROOT`-with-pane-recovery.
+- Test reliability: `tests/test_ota_update.sh` now polls for mock-server readiness instead of a fixed `sleep` (fixed a CI flake); `tests/helpers.sh` pins `run_pulse` density so an ambient `CLAUDE_PULSE_DENSITY` no longer leaks into emoji assertions.
+
 ## v3.3.0 - Taboola density mode
 
 **Released:** June 21, 2026
