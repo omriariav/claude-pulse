@@ -158,7 +158,10 @@ function Resolve-AmqIdentity {
     }
 
     # --- Tier 2: launch record matched by tmux pane id across the base root ---
-    if ((-not $amRoot) -and $env:TMUX_PANE -and $baseRoot -and (Test-Path $baseRoot -PathType Container)) {
+    # Runs whenever Tier 1 didn't resolve — including when AM_ROOT is set but
+    # STALE (deleted session): fall back to the authoritative pane-id lookup
+    # rather than letting a stale AM_ROOT suppress recovery and degrade to amq:?.
+    if ($env:TMUX_PANE -and $baseRoot -and (Test-Path $baseRoot -PathType Container)) {
         foreach ($f in (Get-ChildItem -Path $baseRoot -Filter "launch.json" -Recurse -File -ErrorAction SilentlyContinue)) {
             $adir = Split-Path -Parent $f.FullName
             if ((Split-Path -Leaf $adir) -eq $script:AmqSquadLayer) {
@@ -178,7 +181,7 @@ function Resolve-AmqIdentity {
     # Only trust AM_ROOT when it actually exists — a stale path must not win
     # over a live `amq env --session-name`.
     $sess = ""
-    if ($amRoot -and (Test-Path $amRoot)) {
+    if ($amRoot -and (Test-Path $amRoot -PathType Container)) {
         $sess = Split-Path -Leaf $amRoot
     } else {
         # Clear AM_ROOT for the fallback so a stale value can't be echoed back by

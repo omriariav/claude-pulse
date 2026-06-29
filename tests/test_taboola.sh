@@ -192,6 +192,22 @@ EOF
         -u AM_ME -u TMUX_PANE AM_ROOT="$sproj/.agent-mail/deleted-session" AM_BASE_ROOT="$sproj/.agent-mail" \
         CLAUDE_PULSE_DENSITY=taboola "$PULSE" 2>/dev/null | strip)
     assert_not_contains "$out" "deleted-session" "taboola: stale AM_ROOT not used as session"
+
+    # A stale non-empty AM_ROOT must NOT suppress authoritative pane-id recovery:
+    # Tier 2 should still scan the base root and resolve via the launch record.
+    rproj="$TEST_TMPDIR/squad-staleroot-pane"
+    ragent="$rproj/.agent-mail/codex-v2-12-0/v2-12-0/agents/developer/extensions/$LAYER"
+    mkdir -p "$rproj/.amq-squad/teams" "$ragent"
+    echo '{"workstream":"v1-0-0-reshape","members":[]}' > "$rproj/.amq-squad/team.json"
+    echo '{"members":[{"handle":"developer","session":"v2-12-0"}]}' > "$rproj/.amq-squad/teams/codex-v2-12-0.json"
+    echo '{"team_profile":"codex-v2-12-0","session":"v2-12-0","handle":"developer","tmux":{"pane_id":"%42"}}' \
+        > "$ragent/launch.json"
+    rjson=$(jq -n --arg cwd "$rproj" '{cwd:$cwd,model:{id:"claude-opus-4-8"},context_window:{total_input_tokens:120000,total_output_tokens:5000,context_window_size:200000}}')
+    out=$(echo "$rjson" | env -u RED_ALERT_CITIES -u RED_ALERT_MODE -u NO_COLOR -u AM_ME \
+        AM_ROOT="$rproj/.agent-mail/deleted-session" AM_BASE_ROOT="$rproj/.agent-mail/codex-v2-12-0" TMUX_PANE="%42" \
+        CLAUDE_PULSE_DENSITY=taboola "$PULSE" 2>/dev/null | strip)
+    assert_contains "$out" "amq:codex-v2-12-0/v2-12-0@developer" "taboola: stale AM_ROOT still recovers via pane-id"
+    assert_not_contains "$out" "amq:?" "taboola: stale AM_ROOT does not degrade to ambiguous when pane resolvable"
 else
     echo "  (skipping amq profile-resolution tests — amq not installed)"
 fi

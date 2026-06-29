@@ -707,7 +707,11 @@ _resolve_amq_identity() {
     fi
 
     # --- Tier 2: launch record matched by tmux pane id across the base root ---
-    if [[ -z "$am_root" && -n "${TMUX_PANE:-}" && -n "$base_root" && -d "$base_root" ]]; then
+    # Runs whenever Tier 1 didn't resolve — including when AM_ROOT is set but
+    # STALE (deleted session): the fast path found no record there, so fall back
+    # to the authoritative pane-id lookup across the base root rather than
+    # letting a stale AM_ROOT suppress recovery and degrade to amq:?.
+    if [[ -n "${TMUX_PANE:-}" && -n "$base_root" && -d "$base_root" ]]; then
         local f
         while IFS= read -r f; do
             [[ -n "$f" ]] || continue
