@@ -30,6 +30,188 @@ function Convert-ToPulseString {
     return [string]$Value
 }
 
+# amq-squad layer id used in launch.json extension paths (see record.go).
+$script:AmqSquadLayer = "io.github.omriariav.amq-squad"
+
+# Read team_profile/session/handle/pane out of one agent dir's launch.json.
+# Tries the extensions-layer path first, then the bare path. Returns a hashtable
+# with Profile/Session/Handle/Pane on success, or $null.
+function Read-AmqLaunchRecord {
+    param([string]$Dir)
+    $f = $null
+    $ext = [System.IO.Path]::Combine($Dir, "extensions", $script:AmqSquadLayer, "launch.json")
+    $bare = [System.IO.Path]::Combine($Dir, "launch.json")
+    if (Test-Path $ext) { $f = $ext } elseif (Test-Path $bare) { $f = $bare } else { return $null }
+    try {
+        $j = Get-Content $f -Raw | ConvertFrom-Json
+    } catch { return $null }
+    return @{
+        Profile = Convert-ToPulseString (Get-NestedValue $j @('team_profile'))
+        Session = Convert-ToPulseString (Get-NestedValue $j @('session'))
+        Handle  = Convert-ToPulseString (Get-NestedValue $j @('handle'))
+        Pane    = Convert-ToPulseString (Get-NestedValue $j @('tmux', 'pane_id'))
+    }
+}
+
+# Find which profile config under $SquadDir owns $Want (default team.json ->
+# "default"; teams/<name>.json -> "<name>"). Returns @{Profile=...} for a unique
+# owner, @{Ambiguous=$true} for >1, or $null for none.
+function Resolve-AmqProfileForSession {
+    param([string]$SquadDir, [string]$Want)
+    if (-not $SquadDir) { return $null }
+    $matchesList = @()
+    $test = {
+        param($File, $Name)
+        try {
+            $j = Get-Content $File -Raw | ConvertFrom-Json
+        } catch { return $false }
+        $ws = Convert-ToPulseString (Get-NestedValue $j @('workstream'))
+        if ($ws -eq $Want) { return $true }
+        $members = Get-NestedValue $j @('members')
+        if ($members) {
+            foreach ($m in $members) {
+                if ((Convert-ToPulseString (Get-NestedValue $m @('session'))) -eq $Want) { return $true }
+            }
+        }
+        return $false
+    }
+    $teamJson = [System.IO.Path]::Combine($SquadDir, "team.json")
+    if ((Test-Path $teamJson) -and (& $test $teamJson "default")) { $matchesList += "default" }
+    $teamsDir = [System.IO.Path]::Combine($SquadDir, "teams")
+    if (Test-Path $teamsDir) {
+        foreach ($pf in (Get-ChildItem -Path $teamsDir -Filter "*.json" -File -ErrorAction SilentlyContinue)) {
+            $name = [System.IO.Path]::GetFileNameWithoutExtension($pf.Name)
+            if (& $test $pf.FullName $name) { $matchesList += $name }
+        }
+    }
+    if ($matchesList.Count -eq 0) { return $null }
+    if ($matchesList.Count -eq 1) { return @{ Profile = $matchesList[0] } }
+    return @{ Ambiguous = $true }
+}
+
+# Resolve the CURRENT pane's amq-squad identity. Returns a hashtable with
+# Profile/Session/Handle (any may be empty) and Ambiguous, mirroring the bash
+# _resolve_amq_identity precedence ladder:
+#   1. env (AM_ROOT/AM_ME) -> this pane's launch record (authoritative profile)
+#   2. launch metadata matched by tmux pane id ($TMUX_PANE)
+#   3. env/amq-derived session, profile disambiguated from disk
+#   4. discovery fallback (unambiguous only; else Ambiguous marker)
+function Resolve-AmqIdentity {
+    param([string]$Cwd)
+    $res = @{ Profile = ""; Session = ""; Handle = ""; Ambiguous = $false }
+
+    # Locate base root (.agent-mail) and squad config dir, walking up from cwd.
+    $baseRoot = if ($env:AM_BASE_ROOT) { $env:AM_BASE_ROOT } else { "" }
+    $squadDir = ""
+    $d = $Cwd
+    while ($d) {
+        if (-not $baseRoot) {
+            $cand = [System.IO.Path]::Combine($d, ".agent-mail")
+            if (Test-Path $cand -PathType Container) { $baseRoot = $cand }
+        }
+        if (-not $squadDir) {
+            $cand2 = [System.IO.Path]::Combine($d, ".amq-squad")
+            if (Test-Path $cand2 -PathType Container) { $squadDir = $cand2 }
+        }
+        if ($baseRoot -and $squadDir) { break }
+        $root = [System.IO.Path]::GetPathRoot($d)
+        if ($d -eq $root) { break }
+        $parent = Split-Path -Parent $d
+        if (-not $parent -or $parent -eq $d) { break }
+        $d = $parent
+    }
+
+    # Normalize AM_ROOT to absolute (amq may export it relative).
+    $amRoot = if ($env:AM_ROOT) { $env:AM_ROOT } else { "" }
+    if ($amRoot -and -not [System.IO.Path]::IsPathRooted($amRoot)) {
+        if ($baseRoot) { $amRoot = [System.IO.Path]::Combine((Split-Path -Parent $baseRoot), $amRoot) }
+        else { $amRoot = [System.IO.Path]::Combine($Cwd, $amRoot) }
+    }
+
+    # --- Tier 1: launch record for the current pane (env-keyed) ---
+    if ($amRoot -and $env:AM_ME) {
+        $rec = Read-AmqLaunchRecord ([System.IO.Path]::Combine($amRoot, "agents", $env:AM_ME))
+        if ($rec) {
+            $res.Profile = if ($rec.Profile) { $rec.Profile } else { "default" }
+            $res.Session = if ($rec.Session) { $rec.Session } else { Split-Path -Leaf $amRoot }
+            $res.Handle  = if ($rec.Handle) { $rec.Handle } else { $env:AM_ME }
+            return $res
+        }
+    }
+    if ($amRoot -and $env:TMUX_PANE) {
+        $agentsDir = [System.IO.Path]::Combine($amRoot, "agents")
+        if (Test-Path $agentsDir -PathType Container) {
+            foreach ($adir in (Get-ChildItem -Path $agentsDir -Directory -ErrorAction SilentlyContinue)) {
+                $rec = Read-AmqLaunchRecord $adir.FullName
+                if ($rec -and $rec.Pane -eq $env:TMUX_PANE) {
+                    $res.Profile = if ($rec.Profile) { $rec.Profile } else { "default" }
+                    $res.Session = if ($rec.Session) { $rec.Session } else { Split-Path -Leaf $amRoot }
+                    $res.Handle  = $rec.Handle
+                    return $res
+                }
+            }
+        }
+    }
+
+    # --- Tier 2: launch record matched by tmux pane id across the base root ---
+    if ((-not $amRoot) -and $env:TMUX_PANE -and $baseRoot -and (Test-Path $baseRoot -PathType Container)) {
+        foreach ($f in (Get-ChildItem -Path $baseRoot -Filter "launch.json" -Recurse -File -ErrorAction SilentlyContinue)) {
+            $adir = Split-Path -Parent $f.FullName
+            if ((Split-Path -Leaf $adir) -eq $script:AmqSquadLayer) {
+                $adir = Split-Path -Parent (Split-Path -Parent $adir)  # strip extensions/<layer>
+            }
+            $rec = Read-AmqLaunchRecord $adir
+            if ($rec -and $rec.Pane -eq $env:TMUX_PANE) {
+                $res.Profile = if ($rec.Profile) { $rec.Profile } else { "default" }
+                $res.Session = $rec.Session
+                $res.Handle  = $rec.Handle
+                return $res
+            }
+        }
+    }
+
+    # --- Tier 3: env / amq-derived session, profile disambiguated from disk ---
+    $sess = ""
+    if ($amRoot) {
+        $sess = Split-Path -Leaf $amRoot
+    } else {
+        try {
+            Push-Location $Cwd -ErrorAction Stop
+            $amqOutput = & amq env --session-name 2>&1
+            $amqExit = $LASTEXITCODE
+            if ($amqExit -eq 0 -and $amqOutput -and -not (($amqOutput | Out-String) -match '(?i)\b(error|exception|failed|traceback|not found|command not found)\b')) {
+                $sess = Convert-ToPulseString $amqOutput
+            }
+        } catch { $sess = "" } finally { Pop-Location -ErrorAction SilentlyContinue }
+    }
+    if ($sess) {
+        $res.Session = $sess
+        $res.Handle = if ($env:AM_ME) { $env:AM_ME } else { "" }
+        $owner = Resolve-AmqProfileForSession $squadDir $sess
+        if ($owner) {
+            if ($owner.Ambiguous) { $res.Ambiguous = $true }
+            elseif ($owner.Profile) { $res.Profile = $owner.Profile }
+        }
+        return $res
+    }
+
+    # --- Tier 4: discovery fallback (no provable current identity) ---
+    if (-not $squadDir) { return $res }
+    $cfgs = @()
+    $teamJson = [System.IO.Path]::Combine($squadDir, "team.json")
+    if (Test-Path $teamJson) { $cfgs += $teamJson }
+    $teamsDir = [System.IO.Path]::Combine($squadDir, "teams")
+    if (Test-Path $teamsDir) {
+        foreach ($pf in (Get-ChildItem -Path $teamsDir -Filter "*.json" -File -ErrorAction SilentlyContinue)) { $cfgs += $pf.FullName }
+    }
+    if ($cfgs.Count -eq 1) {
+        try { $res.Session = Convert-ToPulseString (Get-NestedValue (Get-Content $cfgs[0] -Raw | ConvertFrom-Json) @('workstream')) } catch { }
+    } elseif ($cfgs.Count -gt 1) {
+        $res.Ambiguous = $true
+    }
+    return $res
+}
+
 $cwd = $data.cwd
 $model_id = if ($data.model.id) { $data.model.id } else { "claude-sonnet-4-5-20250929" }
 $display_name = if ($data.model.display_name) { $data.model.display_name } else { "" }
@@ -547,44 +729,27 @@ if ($env:CLAUDE_PULSE_DENSITY -eq 'taboola') {
         }
     }
 
-    # amq-squad team/session: team = .workstream from nearest .amq-squad/team.json
+    # amq-squad identity for the CURRENT pane (amq:<profile>/<session>@<handle>),
+    # resolved via the precedence ladder in Resolve-AmqIdentity — never the first
+    # profile found on disk.
     $segAmq = ""
     if (Get-Command amq -ErrorAction SilentlyContinue) {
-        $amqTeam = ""
-        $d = $cwd
-        while ($d) {
-            $tj = [System.IO.Path]::Combine($d, ".amq-squad", "team.json")
-            if (Test-Path $tj) {
-                try { $amqTeam = Convert-ToPulseString (Get-NestedValue (Get-Content $tj -Raw | ConvertFrom-Json) @('workstream')) } catch { $amqTeam = "" }
-                break
-            }
-            $root = [System.IO.Path]::GetPathRoot($d)
-            if ($d -eq $root) { break }
-            $parent = Split-Path -Parent $d
-            if (-not $parent -or $parent -eq $d) { break }
-            $d = $parent
-        }
-        $amqSess = ""
-        try {
-            Push-Location $cwd -ErrorAction Stop
-            $amqOutput = & amq env --session-name 2>&1
-            $amqExit = $LASTEXITCODE
-            if ($amqExit -eq 0 -and $amqOutput -and -not (($amqOutput | Out-String) -match '(?i)\b(error|exception|failed|traceback|not found|command not found)\b')) {
-                $amqSess = Convert-ToPulseString $amqOutput
+        $amqId = Resolve-AmqIdentity $cwd
+        if ($amqId.Ambiguous) {
+            # Squad context exists but the active profile can't be proven.
+            $segAmq = "${tYel}amq:?$tRst"
+        } else {
+            $amqTxt = ""
+            if ($amqId.Profile -and $amqId.Session) { $amqTxt = "amq:$($amqId.Profile)/$($amqId.Session)" }
+            elseif ($amqId.Session) { $amqTxt = "amq:$($amqId.Session)" }
+            elseif ($amqId.Profile) { $amqTxt = "amq:$($amqId.Profile)" }
+            if ($amqTxt) {
+                if ($amqId.Handle) { $amqTxt += "@$($amqId.Handle)" }
+                $segAmq = "$tYel$amqTxt$tRst"
             } else {
-                $amqSess = ""
+                $segAmq = "${tDim}amq:n/a$tRst"
             }
         }
-        catch { $amqSess = "" } finally { Pop-Location -ErrorAction SilentlyContinue }
-        if (-not $amqSess -and $env:AM_ROOT -and $env:AM_BASE_ROOT -and $env:AM_ROOT -ne $env:AM_BASE_ROOT) {
-            $amqSess = Split-Path -Leaf $env:AM_ROOT
-        }
-        $amqTxt = ""
-        if ($amqTeam -and $amqSess -and $amqTeam -ne $amqSess) { $amqTxt = "amq:$amqTeam/$amqSess" }
-        elseif ($amqTeam) { $amqTxt = "amq:$amqTeam" }
-        elseif ($amqSess) { $amqTxt = "amq:$amqSess" }
-        if ($amqTxt -and $env:AM_ME) { $amqTxt += "@$($env:AM_ME)" }
-        if ($amqTxt) { $segAmq = "$tYel$amqTxt$tRst" } else { $segAmq = "${tDim}amq:n/a$tRst" }
     }
 
     # Model + effort (effort absent when the model doesn't support the param).

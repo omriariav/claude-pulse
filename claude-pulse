@@ -603,6 +603,168 @@ _alert_icon_label() {
     esac
 }
 
+# amq-squad layer id used in launch.json extension paths (see record.go).
+_AMQ_SQUAD_LAYER="io.github.omriariav.amq-squad"
+
+# Read team_profile/session/handle out of one agent dir's launch.json.
+# Tries the extensions-layer path first, then the bare path. On success sets
+# _lr_profile / _lr_session / _lr_handle and returns 0; returns 1 otherwise.
+_amq_read_launch_record() {
+    local dir="$1" f=""
+    if   [[ -f "$dir/extensions/$_AMQ_SQUAD_LAYER/launch.json" ]]; then f="$dir/extensions/$_AMQ_SQUAD_LAYER/launch.json"
+    elif [[ -f "$dir/launch.json" ]]; then f="$dir/launch.json"
+    else return 1; fi
+    local parsed
+    # Join on the unit separator (0x1F), NOT a tab: tab is IFS-whitespace, so a
+    # leading empty field (e.g. team_profile=null for the default profile) would
+    # be collapsed by `read` and shift every field left.
+    parsed=$(jq -r '[(.team_profile // ""),(.session // ""),(.handle // "")] | join("\u001f")' "$f" 2>/dev/null) || return 1
+    IFS=$'\037' read -r _lr_profile _lr_session _lr_handle <<<"$parsed"
+    [[ -n "$_lr_profile$_lr_session$_lr_handle" ]]
+}
+
+# Given a session name, find which profile config under $_amq_squad_dir owns it
+# (default team.json -> "default"; teams/<name>.json -> "<name>"). Echoes the
+# single owning profile; if more than one config claims the session, sets
+# _amq_ambiguous=1 and returns 2; returns 1 when nothing matches.
+_amq_profile_for_session() {
+    local want="$1" name pf; local matches=()
+    [[ -z "$_amq_squad_dir" ]] && return 1
+    local q='((.workstream // "") == $s) or (any((.members // [])[]; (.session // "") == $s))'
+    if [[ -f "$_amq_squad_dir/team.json" ]] && jq -e --arg s "$want" "$q" "$_amq_squad_dir/team.json" >/dev/null 2>&1; then
+        matches+=("default")
+    fi
+    if [[ -d "$_amq_squad_dir/teams" ]]; then
+        for pf in "$_amq_squad_dir/teams"/*.json; do
+            [[ -f "$pf" ]] || continue
+            name=$(basename "$pf" .json)
+            if jq -e --arg s "$want" "$q" "$pf" >/dev/null 2>&1; then
+                matches+=("$name")
+            fi
+        done
+    fi
+    case ${#matches[@]} in
+        0) return 1 ;;
+        1) printf '%s' "${matches[0]}"; return 0 ;;
+        *) _amq_ambiguous=1; return 2 ;;
+    esac
+}
+
+# Resolve the CURRENT pane's amq-squad identity into _amq_profile / _amq_sess /
+# _amq_handle. Sets _amq_ambiguous=1 when a squad context exists but the active
+# profile can't be proven. Leaves everything empty when this isn't a squad pane.
+#
+# Precedence (highest first):
+#   1. Current env (AM_ROOT/AM_BASE_ROOT/AM_ME) used to locate the launch record
+#      for THIS pane; team_profile from that record is authoritative.
+#   2. amq-squad launch metadata matched by tmux pane id ($TMUX_PANE).
+#   3. Env/amq-derived session, with profile disambiguated from disk by session.
+#   4. Discovery fallback — only when no current identity can be proven, and
+#      only when unambiguous (otherwise the degraded marker is shown).
+_resolve_amq_identity() {
+    _amq_profile="" _amq_sess="" _amq_handle="" _amq_ambiguous=""
+    local _lr_profile _lr_session _lr_handle
+
+    # Locate the AMQ base root (.agent-mail) and the squad config dir, walking
+    # up from cwd. AM_BASE_ROOT (when exported into the pane) wins for the base.
+    local base_root="${AM_BASE_ROOT:-}" d="$cwd"
+    _amq_squad_dir=""
+    while [[ -n "$d" && "$d" != "/" ]]; do
+        [[ -z "$base_root" && -d "$d/.agent-mail" ]] && base_root="$d/.agent-mail"
+        [[ -z "$_amq_squad_dir" && -d "$d/.amq-squad" ]] && _amq_squad_dir="$d/.amq-squad"
+        [[ -n "$base_root" && -n "$_amq_squad_dir" ]] && break
+        d=$(dirname "$d")
+    done
+
+    # Normalize AM_ROOT to an absolute path (amq may export it relative).
+    local am_root="${AM_ROOT:-}"
+    if [[ -n "$am_root" && "$am_root" != /* ]]; then
+        if [[ -n "$base_root" ]]; then am_root="$(dirname "$base_root")/$am_root"
+        else am_root="$cwd/$am_root"; fi
+    fi
+
+    # --- Tier 1: launch record for the current pane (env-keyed, authoritative) ---
+    # Fast path: AM_ROOT + AM_ME point straight at this agent's dir.
+    if [[ -n "$am_root" && -n "${AM_ME:-}" ]] && _amq_read_launch_record "$am_root/agents/$AM_ME"; then
+        _amq_profile="${_lr_profile:-default}"; _amq_sess="$_lr_session"; _amq_handle="${_lr_handle:-$AM_ME}"
+        [[ -z "$_amq_sess" ]] && _amq_sess=$(basename "$am_root")
+        return 0
+    fi
+    # AM_ROOT known but no handle: match this session's agents by tmux pane id.
+    if [[ -n "$am_root" && -n "${TMUX_PANE:-}" && -d "$am_root/agents" ]]; then
+        local adir
+        for adir in "$am_root/agents"/*; do
+            [[ -d "$adir" ]] || continue
+            _amq_read_launch_record "$adir" || continue
+            local pane
+            pane=$(_amq_launch_pane "$adir")
+            if [[ "$pane" == "$TMUX_PANE" ]]; then
+                _amq_profile="${_lr_profile:-default}"; _amq_sess="$_lr_session"; _amq_handle="$_lr_handle"
+                [[ -z "$_amq_sess" ]] && _amq_sess=$(basename "$am_root")
+                return 0
+            fi
+        done
+    fi
+
+    # --- Tier 2: launch record matched by tmux pane id across the base root ---
+    if [[ -z "$am_root" && -n "${TMUX_PANE:-}" && -n "$base_root" && -d "$base_root" ]]; then
+        local f
+        while IFS= read -r f; do
+            [[ -n "$f" ]] || continue
+            local adir="${f%/launch.json}"; adir="${adir%/extensions/$_AMQ_SQUAD_LAYER}"
+            _amq_read_launch_record "$adir" || continue
+            _amq_profile="${_lr_profile:-default}"; _amq_sess="$_lr_session"; _amq_handle="$_lr_handle"
+            return 0
+        done < <(grep -rlF "\"$TMUX_PANE\"" "$base_root" --include=launch.json 2>/dev/null)
+    fi
+
+    # --- Tier 3: env / amq-derived session, profile disambiguated from disk ---
+    if [[ -n "$am_root" ]]; then
+        _amq_sess=$(basename "$am_root")
+    else
+        _amq_sess=$(cd "$cwd" 2>/dev/null && amq env --session-name 2>/dev/null)
+    fi
+    if [[ -n "$_amq_sess" ]]; then
+        _amq_handle="${AM_ME:-}"
+        # NOTE: _amq_profile_for_session runs in a subshell here, so it cannot
+        # set _amq_ambiguous in this scope — drive off its exit code instead
+        # (0 = unique profile on stdout, 1 = no match, 2 = ambiguous).
+        local p rc
+        p=$(_amq_profile_for_session "$_amq_sess"); rc=$?
+        if [[ $rc -eq 0 ]]; then
+            _amq_profile="$p"
+        elif [[ $rc -eq 2 ]]; then
+            _amq_ambiguous=1   # caller renders amq:?
+        fi
+        return 0
+    fi
+
+    # --- Tier 4: discovery fallback (no provable current identity) ---
+    [[ -z "$_amq_squad_dir" ]] && return 0   # not a squad project -> n/a
+    local cfgs=() pf
+    [[ -f "$_amq_squad_dir/team.json" ]] && cfgs+=("$_amq_squad_dir/team.json")
+    if [[ -d "$_amq_squad_dir/teams" ]]; then
+        for pf in "$_amq_squad_dir/teams"/*.json; do [[ -f "$pf" ]] && cfgs+=("$pf"); done
+    fi
+    if [[ ${#cfgs[@]} -eq 1 ]]; then
+        # Exactly one configured profile — safe to show its workstream as context
+        # (no session/@handle: this is not a proven pane identity).
+        _amq_sess=$(jq -r '.workstream // empty' "${cfgs[0]}" 2>/dev/null)
+    elif [[ ${#cfgs[@]} -gt 1 ]]; then
+        _amq_ambiguous=1
+    fi
+    return 0
+}
+
+# Echo the tmux pane id recorded in an agent dir's launch.json (empty if none).
+_amq_launch_pane() {
+    local dir="$1" f=""
+    if   [[ -f "$dir/extensions/$_AMQ_SQUAD_LAYER/launch.json" ]]; then f="$dir/extensions/$_AMQ_SQUAD_LAYER/launch.json"
+    elif [[ -f "$dir/launch.json" ]]; then f="$dir/launch.json"
+    else return 1; fi
+    jq -r '.tmux.pane_id // ""' "$f" 2>/dev/null
+}
+
 # Red Alert: read-only — daemon is managed by launchd (macOS) or systemd (Linux)
 alert_segment=""
 if [[ -n "$RED_ALERT_CITIES" ]] || [[ -n "$RED_ALERT_MODE" ]]; then
@@ -940,35 +1102,32 @@ case "$density" in
             fi
         fi
 
-        # amq-squad team/session (reference parity + squad team name)
-        # team = .workstream from nearest .amq-squad/team.json; session = amq env --session-name
+        # amq-squad identity — resolved for the CURRENT pane, not the first
+        # profile found on disk. Rendered as amq:<profile>/<session>@<handle>.
+        # See _resolve_amq_identity for the precedence ladder.
         _tb_amq=""
         if command -v amq &>/dev/null; then
-            _amq_team="" _amq_dir="$cwd"
-            while [[ -n "$_amq_dir" && "$_amq_dir" != "/" ]]; do
-                if [[ -f "$_amq_dir/.amq-squad/team.json" ]]; then
-                    _amq_team=$(jq -r '.workstream // empty' "$_amq_dir/.amq-squad/team.json" 2>/dev/null)
-                    break
-                fi
-                _amq_dir=$(dirname "$_amq_dir")
-            done
-            _amq_sess=$(cd "$cwd" 2>/dev/null && amq env --session-name 2>/dev/null)
-            if [[ -z "$_amq_sess" ]] && [[ -n "${AM_ROOT:-}" ]] && [[ -n "${AM_BASE_ROOT:-}" ]] && [[ "$AM_ROOT" != "$AM_BASE_ROOT" ]]; then
-                _amq_sess=$(basename "$AM_ROOT")
-            fi
-            if [[ -n "$_amq_team" ]] && [[ -n "$_amq_sess" ]] && [[ "$_amq_team" != "$_amq_sess" ]]; then
-                _tb_amq="amq:${_amq_team}/${_amq_sess}"
-            elif [[ -n "$_amq_team" ]]; then
-                _tb_amq="amq:${_amq_team}"
-            elif [[ -n "$_amq_sess" ]]; then
-                _tb_amq="amq:${_amq_sess}"
-            fi
-            if [[ -n "$_tb_amq" ]]; then
-                [[ -n "${AM_ME:-}" ]] && _tb_amq="${_tb_amq}@${AM_ME}"
-                _tb_amq="${T_YEL}${_tb_amq}${T_RST}"
+            _resolve_amq_identity   # sets _amq_profile / _amq_sess / _amq_handle / _amq_ambiguous
+            if [[ -n "$_amq_ambiguous" ]]; then
+                # Squad context exists but the active profile can't be proven —
+                # show a degraded marker instead of silently picking the wrong one.
+                _tb_amq="${T_YEL}amq:?${T_RST}"
             else
-                # amq installed but no squad/session here — show neutral n/a
-                _tb_amq="${T_DIM}amq:n/a${T_RST}"
+                _amq_label=""
+                if [[ -n "$_amq_profile" && -n "$_amq_sess" ]]; then
+                    _amq_label="amq:${_amq_profile}/${_amq_sess}"
+                elif [[ -n "$_amq_sess" ]]; then
+                    _amq_label="amq:${_amq_sess}"
+                elif [[ -n "$_amq_profile" ]]; then
+                    _amq_label="amq:${_amq_profile}"
+                fi
+                if [[ -n "$_amq_label" ]]; then
+                    [[ -n "$_amq_handle" ]] && _amq_label="${_amq_label}@${_amq_handle}"
+                    _tb_amq="${T_YEL}${_amq_label}${T_RST}"
+                else
+                    # amq installed but no squad/session here — show neutral n/a
+                    _tb_amq="${T_DIM}amq:n/a${T_RST}"
+                fi
             fi
         fi
 
