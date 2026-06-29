@@ -108,10 +108,22 @@ EOF
 # Start simple HTTP server
 (cd "$MOCK_RELEASE_DIR" && python3 -m http.server "$MOCK_SERVER_PORT" >/dev/null 2>&1) &
 MOCK_SERVER_PID=$!
-sleep 1
+
+# Poll for readiness instead of a fixed sleep — a loaded CI runner can take
+# well over a second to bind the port, which previously flaked as a failure.
+mock_server_ready=""
+for _ in $(seq 1 30); do
+    if curl -sf "http://localhost:${MOCK_SERVER_PORT}/api_response.json" > /dev/null 2>&1; then
+        mock_server_ready=1
+        break
+    fi
+    # Bail early if the server process died (e.g. port already in use).
+    kill -0 "$MOCK_SERVER_PID" 2>/dev/null || break
+    sleep 0.5
+done
 
 # Verify server is running
-if curl -sf "http://localhost:${MOCK_SERVER_PORT}/api_response.json" > /dev/null 2>&1; then
+if [[ -n "$mock_server_ready" ]]; then
     pass "mock server running on port $MOCK_SERVER_PORT"
 else
     fail "mock server failed to start"

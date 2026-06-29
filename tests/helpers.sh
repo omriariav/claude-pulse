@@ -30,7 +30,11 @@ run_pulse() {
     if [[ -n "$extra_json" ]]; then
         json=$(echo "$json" | jq ". + $extra_json")
     fi
-    echo "$json" | CLAUDE_PULSE_DENSITY="${CLAUDE_PULSE_DENSITY:-heavy}" "$SCRIPT_DIR/claude-pulse" 2>/dev/null
+    # Pin density to heavy rather than inheriting the dev's ambient
+    # CLAUDE_PULSE_DENSITY — otherwise running the suite with e.g.
+    # CLAUDE_PULSE_DENSITY=taboola set in the shell (taboola is emoji-free)
+    # spuriously fails 🧠/emoji assertions in the alert/statusline suites.
+    echo "$json" | CLAUDE_PULSE_DENSITY=heavy "$SCRIPT_DIR/claude-pulse" 2>/dev/null
 }
 
 # Fake a running daemon (write current PID to PID file so indicator shows 🔔 not 🔕)
