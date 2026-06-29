@@ -167,6 +167,31 @@ EOF
         AM_ROOT="$dproj/.agent-mail/main" AM_BASE_ROOT="$dproj/.agent-mail" AM_ME=cto \
         CLAUDE_PULSE_DENSITY=taboola "$PULSE" 2>/dev/null | strip)
     assert_contains "$out" "amq:default/main@cto" "taboola: proven default profile shows default/<session>"
+
+    # tmux pane match must check .tmux.pane_id specifically, not just any field
+    # equal to $TMUX_PANE (grep is only a prefilter). Here a NON-pane field
+    # (handle) equals the active pane string, but the real pane id differs.
+    fproj="$TEST_TMPDIR/squad-falsepane"
+    fagent="$fproj/.agent-mail/s1/agents/%falsey/extensions/$LAYER"
+    mkdir -p "$fproj/.amq-squad" "$fagent"
+    echo '{"workstream":"s1","members":[{"handle":"%falsey","session":"s1"}]}' > "$fproj/.amq-squad/team.json"
+    echo '{"team_profile":"named","session":"s1","handle":"%falsey","tmux":{"pane_id":"%realpane"}}' \
+        > "$fagent/launch.json"
+    fjson=$(jq -n --arg cwd "$fproj" '{cwd:$cwd,model:{id:"claude-opus-4-8"},context_window:{total_input_tokens:120000,total_output_tokens:5000,context_window_size:200000}}')
+    out=$(echo "$fjson" | env -u RED_ALERT_CITIES -u RED_ALERT_MODE -u NO_COLOR \
+        -u AM_ROOT -u AM_BASE_ROOT -u AM_ME TMUX_PANE="%falsey" \
+        CLAUDE_PULSE_DENSITY=taboola "$PULSE" 2>/dev/null | strip)
+    assert_not_contains "$out" "amq:named/s1" "taboola: pane match ignores non-pane fields equal to TMUX_PANE"
+
+    # A stale/nonexistent AM_ROOT must not be trusted as the session source.
+    sproj="$TEST_TMPDIR/squad-stale"
+    mkdir -p "$sproj/.amq-squad"
+    echo '{"workstream":"realws","members":[]}' > "$sproj/.amq-squad/team.json"
+    sjson=$(jq -n --arg cwd "$sproj" '{cwd:$cwd,model:{id:"claude-opus-4-8"},context_window:{total_input_tokens:120000,total_output_tokens:5000,context_window_size:200000}}')
+    out=$(echo "$sjson" | env -u RED_ALERT_CITIES -u RED_ALERT_MODE -u NO_COLOR \
+        -u AM_ME -u TMUX_PANE AM_ROOT="$sproj/.agent-mail/deleted-session" AM_BASE_ROOT="$sproj/.agent-mail" \
+        CLAUDE_PULSE_DENSITY=taboola "$PULSE" 2>/dev/null | strip)
+    assert_not_contains "$out" "deleted-session" "taboola: stale AM_ROOT not used as session"
 else
     echo "  (skipping amq profile-resolution tests — amq not installed)"
 fi

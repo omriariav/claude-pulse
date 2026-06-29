@@ -45,12 +45,16 @@ function Read-AmqLaunchRecord {
     try {
         $j = Get-Content $f -Raw | ConvertFrom-Json
     } catch { return $null }
-    return @{
+    $rec = @{
         Profile = Convert-ToPulseString (Get-NestedValue $j @('team_profile'))
         Session = Convert-ToPulseString (Get-NestedValue $j @('session'))
         Handle  = Convert-ToPulseString (Get-NestedValue $j @('handle'))
         Pane    = Convert-ToPulseString (Get-NestedValue $j @('tmux', 'pane_id'))
     }
+    # Reject identity-less records (matches bash _amq_read_launch_record), so a
+    # stray file never synthesizes a bogus default/<basename> identity.
+    if (-not ($rec.Profile -or $rec.Session -or $rec.Handle)) { return $null }
+    return $rec
 }
 
 # Find which profile config under $SquadDir owns $Want (default team.json ->
@@ -171,18 +175,24 @@ function Resolve-AmqIdentity {
     }
 
     # --- Tier 3: env / amq-derived session, profile disambiguated from disk ---
+    # Only trust AM_ROOT when it actually exists — a stale path must not win
+    # over a live `amq env --session-name`.
     $sess = ""
-    if ($amRoot) {
+    if ($amRoot -and (Test-Path $amRoot)) {
         $sess = Split-Path -Leaf $amRoot
     } else {
+        # Clear AM_ROOT for the fallback so a stale value can't be echoed back by
+        # amq env — resolve the session from cwd (.amqrc / .agent-mail) instead.
+        $savedAmRoot = $env:AM_ROOT
         try {
             Push-Location $Cwd -ErrorAction Stop
+            $env:AM_ROOT = $null
             $amqOutput = & amq env --session-name 2>&1
             $amqExit = $LASTEXITCODE
             if ($amqExit -eq 0 -and $amqOutput -and -not (($amqOutput | Out-String) -match '(?i)\b(error|exception|failed|traceback|not found|command not found)\b')) {
                 $sess = Convert-ToPulseString $amqOutput
             }
-        } catch { $sess = "" } finally { Pop-Location -ErrorAction SilentlyContinue }
+        } catch { $sess = "" } finally { $env:AM_ROOT = $savedAmRoot; Pop-Location -ErrorAction SilentlyContinue }
     }
     if ($sess) {
         $res.Session = $sess

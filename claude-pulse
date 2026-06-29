@@ -713,16 +713,23 @@ _resolve_amq_identity() {
             [[ -n "$f" ]] || continue
             local adir="${f%/launch.json}"; adir="${adir%/extensions/$_AMQ_SQUAD_LAYER}"
             _amq_read_launch_record "$adir" || continue
+            # grep is only a cheap prefilter — confirm the match is the pane id
+            # field, not some other field that happens to equal $TMUX_PANE.
+            [[ "$(_amq_launch_pane "$adir")" == "$TMUX_PANE" ]] || continue
             _amq_profile="${_lr_profile:-default}"; _amq_sess="$_lr_session"; _amq_handle="$_lr_handle"
             return 0
         done < <(grep -rlF "\"$TMUX_PANE\"" "$base_root" --include=launch.json 2>/dev/null)
     fi
 
     # --- Tier 3: env / amq-derived session, profile disambiguated from disk ---
-    if [[ -n "$am_root" ]]; then
+    # Only trust AM_ROOT as the session source when it actually exists — a stale
+    # or deleted path must not win over a live `amq env --session-name`.
+    if [[ -n "$am_root" && -d "$am_root" ]]; then
         _amq_sess=$(basename "$am_root")
     else
-        _amq_sess=$(cd "$cwd" 2>/dev/null && amq env --session-name 2>/dev/null)
+        # Unset AM_ROOT for the fallback so a stale value can't be echoed back by
+        # amq env — resolve the session from cwd (.amqrc / .agent-mail) instead.
+        _amq_sess=$(cd "$cwd" 2>/dev/null && env -u AM_ROOT amq env --session-name 2>/dev/null)
     fi
     if [[ -n "$_amq_sess" ]]; then
         _amq_handle="${AM_ME:-}"
