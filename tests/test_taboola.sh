@@ -110,6 +110,108 @@ else
     echo "  (skipping amq tests — amq not installed)"
 fi
 
+# --- Regression: current pane must resolve its OWN profile, not the first/
+# default profile found on disk (the amq:<profile>/<session>@<handle> form). ---
+# Scenario: default profile carries an OLD workstream (v1-0-0-reshape) while the
+# active pane was launched from the named profile codex-v2-11-0 (session v2-11-0,
+# handle developer). Expected: amq:codex-v2-11-0/v2-11-0@developer — never the
+# stale v1-0-0-reshape.
+if command -v amq &>/dev/null; then
+    LAYER="io.github.omriariav.amq-squad"
+    proj="$TEST_TMPDIR/squad-profiles"
+    mkdir -p "$proj/.amq-squad/teams"
+    echo '{"schema":1,"workstream":"v1-0-0-reshape","members":[{"role":"cto","handle":"cto","session":"v1-0-0-reshape"}]}' \
+        > "$proj/.amq-squad/team.json"
+    echo '{"schema":3,"members":[{"role":"developer","handle":"developer","session":"v2-11-0"}]}' \
+        > "$proj/.amq-squad/teams/codex-v2-11-0.json"
+    agent_dir="$proj/.agent-mail/v2-11-0/agents/developer/extensions/$LAYER"
+    mkdir -p "$agent_dir"
+    cat > "$agent_dir/launch.json" <<EOF
+{"schema":1,"team_profile":"codex-v2-11-0","session":"v2-11-0","handle":"developer","root":"$proj/.agent-mail/v2-11-0","base_root":"$proj/.agent-mail","tmux":{"pane_id":"%9099"}}
+EOF
+    pulse_json=$(jq -n --arg cwd "$proj" '{cwd:$cwd,model:{id:"claude-opus-4-8"},context_window:{total_input_tokens:120000,total_output_tokens:5000,context_window_size:200000}}')
+
+    # Tier 1: env (AM_ROOT/AM_ME) pins the launch record for this pane.
+    out=$(echo "$pulse_json" | env -u RED_ALERT_CITIES -u RED_ALERT_MODE -u NO_COLOR \
+        AM_ROOT="$proj/.agent-mail/v2-11-0" AM_BASE_ROOT="$proj/.agent-mail" AM_ME=developer \
+        CLAUDE_PULSE_DENSITY=taboola "$PULSE" 2>/dev/null | strip)
+    assert_contains "$out" "amq:codex-v2-11-0/v2-11-0@developer" "taboola: resolves current named profile (not default)"
+    assert_not_contains "$out" "v1-0-0-reshape" "taboola: does not show stale default-profile workstream"
+
+    # Tier 2: no AM_*, matched purely by tmux pane id from the launch record.
+    out=$(echo "$pulse_json" | env -u RED_ALERT_CITIES -u RED_ALERT_MODE -u NO_COLOR \
+        -u AM_ROOT -u AM_BASE_ROOT -u AM_ME TMUX_PANE="%9099" \
+        CLAUDE_PULSE_DENSITY=taboola "$PULSE" 2>/dev/null | strip)
+    assert_contains "$out" "amq:codex-v2-11-0/v2-11-0@developer" "taboola: resolves profile via tmux pane id match"
+    assert_not_contains "$out" "v1-0-0-reshape" "taboola: pane-id match avoids stale workstream"
+
+    # Ambiguous: two named profiles claim the same session and identity is
+    # otherwise unproven → explicit degraded marker, never a silent pick.
+    echo '{"schema":3,"members":[{"handle":"x","session":"v2-11-0"}]}' \
+        > "$proj/.amq-squad/teams/decoy.json"
+    out=$(echo "$pulse_json" | env -u RED_ALERT_CITIES -u RED_ALERT_MODE -u NO_COLOR \
+        -u AM_ME -u TMUX_PANE AM_ROOT="$proj/.agent-mail/v2-11-0" AM_BASE_ROOT="$proj/.agent-mail" \
+        CLAUDE_PULSE_DENSITY=taboola "$PULSE" 2>/dev/null | strip)
+    assert_contains "$out" "amq:?" "taboola: ambiguous profile shows degraded marker"
+
+    # Default profile (team_profile=null) shows default/<session> when proven —
+    # guards the empty-leading-field parse (tab would collapse it and shift left).
+    dproj="$TEST_TMPDIR/squad-default"
+    mkdir -p "$dproj/.amq-squad" "$dproj/.agent-mail/main/agents/cto/extensions/$LAYER"
+    echo '{"schema":1,"workstream":"main","members":[{"role":"cto","handle":"cto","session":"main"}]}' \
+        > "$dproj/.amq-squad/team.json"
+    echo '{"team_profile":null,"session":"main","handle":"cto","root":"'"$dproj"'/.agent-mail/main","tmux":{"pane_id":"%9100"}}' \
+        > "$dproj/.agent-mail/main/agents/cto/extensions/$LAYER/launch.json"
+    djson=$(jq -n --arg cwd "$dproj" '{cwd:$cwd,model:{id:"claude-opus-4-8"},context_window:{total_input_tokens:120000,total_output_tokens:5000,context_window_size:200000}}')
+    out=$(echo "$djson" | env -u RED_ALERT_CITIES -u RED_ALERT_MODE -u NO_COLOR \
+        AM_ROOT="$dproj/.agent-mail/main" AM_BASE_ROOT="$dproj/.agent-mail" AM_ME=cto \
+        CLAUDE_PULSE_DENSITY=taboola "$PULSE" 2>/dev/null | strip)
+    assert_contains "$out" "amq:default/main@cto" "taboola: proven default profile shows default/<session>"
+
+    # tmux pane match must check .tmux.pane_id specifically, not just any field
+    # equal to $TMUX_PANE (grep is only a prefilter). Here a NON-pane field
+    # (handle) equals the active pane string, but the real pane id differs.
+    fproj="$TEST_TMPDIR/squad-falsepane"
+    fagent="$fproj/.agent-mail/s1/agents/%falsey/extensions/$LAYER"
+    mkdir -p "$fproj/.amq-squad" "$fagent"
+    echo '{"workstream":"s1","members":[{"handle":"%falsey","session":"s1"}]}' > "$fproj/.amq-squad/team.json"
+    echo '{"team_profile":"named","session":"s1","handle":"%falsey","tmux":{"pane_id":"%realpane"}}' \
+        > "$fagent/launch.json"
+    fjson=$(jq -n --arg cwd "$fproj" '{cwd:$cwd,model:{id:"claude-opus-4-8"},context_window:{total_input_tokens:120000,total_output_tokens:5000,context_window_size:200000}}')
+    out=$(echo "$fjson" | env -u RED_ALERT_CITIES -u RED_ALERT_MODE -u NO_COLOR \
+        -u AM_ROOT -u AM_BASE_ROOT -u AM_ME TMUX_PANE="%falsey" \
+        CLAUDE_PULSE_DENSITY=taboola "$PULSE" 2>/dev/null | strip)
+    assert_not_contains "$out" "amq:named/s1" "taboola: pane match ignores non-pane fields equal to TMUX_PANE"
+
+    # A stale/nonexistent AM_ROOT must not be trusted as the session source.
+    sproj="$TEST_TMPDIR/squad-stale"
+    mkdir -p "$sproj/.amq-squad"
+    echo '{"workstream":"realws","members":[]}' > "$sproj/.amq-squad/team.json"
+    sjson=$(jq -n --arg cwd "$sproj" '{cwd:$cwd,model:{id:"claude-opus-4-8"},context_window:{total_input_tokens:120000,total_output_tokens:5000,context_window_size:200000}}')
+    out=$(echo "$sjson" | env -u RED_ALERT_CITIES -u RED_ALERT_MODE -u NO_COLOR \
+        -u AM_ME -u TMUX_PANE AM_ROOT="$sproj/.agent-mail/deleted-session" AM_BASE_ROOT="$sproj/.agent-mail" \
+        CLAUDE_PULSE_DENSITY=taboola "$PULSE" 2>/dev/null | strip)
+    assert_not_contains "$out" "deleted-session" "taboola: stale AM_ROOT not used as session"
+
+    # A stale non-empty AM_ROOT must NOT suppress authoritative pane-id recovery:
+    # Tier 2 should still scan the base root and resolve via the launch record.
+    rproj="$TEST_TMPDIR/squad-staleroot-pane"
+    ragent="$rproj/.agent-mail/codex-v2-12-0/v2-12-0/agents/developer/extensions/$LAYER"
+    mkdir -p "$rproj/.amq-squad/teams" "$ragent"
+    echo '{"workstream":"v1-0-0-reshape","members":[]}' > "$rproj/.amq-squad/team.json"
+    echo '{"members":[{"handle":"developer","session":"v2-12-0"}]}' > "$rproj/.amq-squad/teams/codex-v2-12-0.json"
+    echo '{"team_profile":"codex-v2-12-0","session":"v2-12-0","handle":"developer","tmux":{"pane_id":"%42"}}' \
+        > "$ragent/launch.json"
+    rjson=$(jq -n --arg cwd "$rproj" '{cwd:$cwd,model:{id:"claude-opus-4-8"},context_window:{total_input_tokens:120000,total_output_tokens:5000,context_window_size:200000}}')
+    out=$(echo "$rjson" | env -u RED_ALERT_CITIES -u RED_ALERT_MODE -u NO_COLOR -u AM_ME \
+        AM_ROOT="$rproj/.agent-mail/deleted-session" AM_BASE_ROOT="$rproj/.agent-mail/codex-v2-12-0" TMUX_PANE="%42" \
+        CLAUDE_PULSE_DENSITY=taboola "$PULSE" 2>/dev/null | strip)
+    assert_contains "$out" "amq:codex-v2-12-0/v2-12-0@developer" "taboola: stale AM_ROOT still recovers via pane-id"
+    assert_not_contains "$out" "amq:?" "taboola: stale AM_ROOT does not degrade to ambiguous when pane resolvable"
+else
+    echo "  (skipping amq profile-resolution tests — amq not installed)"
+fi
+
 # Exit code is 0 (statusline must never fail-exit, or Claude Code renders nothing)
 echo '{"cwd":"/tmp","model":{"id":"claude-opus-4-8"},"context_window":{"total_input_tokens":40000,"total_output_tokens":2000,"context_window_size":200000}}' \
     | env -u RED_ALERT_CITIES -u RED_ALERT_MODE CLAUDE_PULSE_DENSITY=taboola "$PULSE" >/dev/null 2>&1
