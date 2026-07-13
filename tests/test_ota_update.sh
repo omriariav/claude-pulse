@@ -281,26 +281,23 @@ check "rate limit: skips check within 1 hour" '[[ "$still_ver" == "$current_ver"
 echo ""
 echo "--- Test: Update badge display ---"
 
-# Badge tests use the real cache path since claude-pulse reads from $HOME/.cache/claude-pulse
-REAL_CACHE="$HOME/.cache/claude-pulse"
-mkdir -p "$REAL_CACHE"
+# Badge tests use a sandboxed cache via CLAUDE_PULSE_CACHE_DIR — never the
+# developer's real ~/.cache/claude-pulse (no save/restore dance needed).
+BADGE_CACHE="${TEST_DIR}/badge-cache"
+mkdir -p "$BADGE_CACHE"
 
-# Simulate auto-update notification (save/restore any existing file)
-_saved_notif="" && [[ -f "$REAL_CACHE/update_notification" ]] && _saved_notif=$(cat "$REAL_CACHE/update_notification")
-printf '%s\n%s' "$FAKE_VER" "$(date +%s)" > "$REAL_CACHE/update_notification"
-badge_output=$(echo '{"cwd":"/test","model":{"id":"claude-opus-4-6"},"context_window":{"total_input_tokens":50000,"total_output_tokens":5000,"context_window_size":200000}}' | CLAUDE_PULSE_DENSITY=heavy bash "$SCRIPT_DIR/claude-pulse" 2>/dev/null)
+# Simulate auto-update notification
+printf '%s\n%s' "$FAKE_VER" "$(date +%s)" > "$BADGE_CACHE/update_notification"
+badge_output=$(echo '{"cwd":"/test","model":{"id":"claude-opus-4-6"},"context_window":{"total_input_tokens":50000,"total_output_tokens":5000,"context_window_size":200000}}' | CLAUDE_PULSE_CACHE_DIR="$BADGE_CACHE" CLAUDE_PULSE_DENSITY=heavy bash "$SCRIPT_DIR/claude-pulse" 2>/dev/null)
 check "badge: shows update version" 'echo "$badge_output" | grep -q "Updated to v${FAKE_VER}"'
 check "badge: shows refresh emoji" 'echo "$badge_output" | grep -q "🔄"'
-rm -f "$REAL_CACHE/update_notification"
-[[ -n "$_saved_notif" ]] && echo "$_saved_notif" > "$REAL_CACHE/update_notification"
+rm -f "$BADGE_CACHE/update_notification"
 
-# Simulate notify-mode available (save/restore any existing file)
-_saved_avail="" && [[ -f "$REAL_CACHE/update_available" ]] && _saved_avail=$(cat "$REAL_CACHE/update_available")
-printf '%s\n%s' "$FAKE_VER" "/tmp/staged" > "$REAL_CACHE/update_available"
-avail_output=$(echo '{"cwd":"/test","model":{"id":"claude-opus-4-6"},"context_window":{"total_input_tokens":50000,"total_output_tokens":5000,"context_window_size":200000}}' | CLAUDE_PULSE_DENSITY=heavy bash "$SCRIPT_DIR/claude-pulse" 2>/dev/null)
+# Simulate notify-mode available
+printf '%s\n%s' "$FAKE_VER" "/tmp/staged" > "$BADGE_CACHE/update_available"
+avail_output=$(echo '{"cwd":"/test","model":{"id":"claude-opus-4-6"},"context_window":{"total_input_tokens":50000,"total_output_tokens":5000,"context_window_size":200000}}' | CLAUDE_PULSE_CACHE_DIR="$BADGE_CACHE" CLAUDE_PULSE_DENSITY=heavy bash "$SCRIPT_DIR/claude-pulse" 2>/dev/null)
 check "badge: shows available version" 'echo "$avail_output" | grep -q "available"'
-rm -f "$REAL_CACHE/update_available"
-[[ -n "$_saved_avail" ]] && echo "$_saved_avail" > "$REAL_CACHE/update_available"
+rm -f "$BADGE_CACHE/update_available"
 
 # --- Results ---
 echo ""

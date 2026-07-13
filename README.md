@@ -247,7 +247,7 @@ Supports English city names, Hebrew names, zone-specific names (e.g., `Tel Aviv 
 | `CLAUDE_PULSE_HIDE_COST` | `1` | Hide session cost (💰) in heavy/taboola mode — recommended for Max/Pro |
 | `NO_COLOR` | (any) | Strip all ANSI color in `taboola` mode |
 | `CLAUDE_PULSE_HIDE_DIFF` | `1` | Hide git diff stats (📝) |
-| `CLAUDE_PULSE_DEBUG_RATE_LIMITS` | `1` | Write a one-shot, privacy-safe diagnostic of which `rate_limits` keys your Claude Code sends to `~/.cache/claude-pulse/rate-limits-debug.json` (capture time, Claude Code version, model id, key names only — no values, ids, or paths). Delete the file to capture again |
+| `CLAUDE_PULSE_DEBUG_RATE_LIMITS` | `1` | Write a one-shot, privacy-safe diagnostic of which `rate_limits` keys your Claude Code sends to `~/.cache/claude-pulse/rate-limits-debug.json` (capture time, Claude Code version, model id, key names only — no values, ids, or paths). Delete the file to capture again; `CLAUDE_PULSE_DEBUG_RATE_LIMITS_FILE` overrides the path |
 | `RED_ALERT_CITIES` | comma-separated | Filter alerts to specific cities/zones |
 | `RED_ALERT_MODE` | `all` / `mock` | `all` = every alert. `mock` = offline test data |
 | `RED_ALERT_SOUND` | `off` | Disable alert sounds |

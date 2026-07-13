@@ -25,16 +25,13 @@ SEP="${C_DIM}│${C_RESET}"
 # Extract values from JSON (single jq call, Unit Separator delimiter)
 IFS=$'\x1f' read -r cwd transcript_path session_id model_id rate_5h rate_7d rate_fable session_name cost_usd used_pct display_name effort < <(
     echo "$input" | jq -j '
-    # Fable weekly quota. Claude Code 2.1.207 does NOT emit it in the statusline
-    # payload: its payload builder copies only five_hour and seven_day, even
-    # though /usage shows "Current week (Fable)" (fetched separately from the
-    # OAuth usage endpoint) and the internal header-derived bucket is named
-    # seven_day_overage_included. All patterns below are therefore
-    # future-proofing — semantic keys first, then Fable-scoped metadata, then
-    # the internal bucket name — so the segment lights up unchanged the moment
-    # a newer Claude Code starts emitting any of them. Absent → hidden.
-    # Set CLAUDE_PULSE_DEBUG_RATE_LIMITS=1 to capture which keys your Claude
-    # Code actually sends.
+    # Fable weekly quota — NOT emitted by Claude Code as of 2.1.207 (its payload
+    # builder copies only five_hour/seven_day; /usage gets Fable elsewhere).
+    # The ladder below — semantic keys, then Fable-scoped metadata, then the
+    # internal bucket name (seven_day_overage_included) — is future-proofing so
+    # the segment lights up when a newer Claude Code emits any of them.
+    # Absent → hidden. Full investigation notes: CLAUDE.md "Statusline JSON
+    # schema". CLAUDE_PULSE_DEBUG_RATE_LIMITS=1 captures the keys you receive.
     def percentage:
         if type == "number" then .
         elif type == "object" then
@@ -43,23 +40,30 @@ IFS=$'\x1f' read -r cwd transcript_path session_id model_id rate_5h rate_7d rate
                 if .utilization <= 1 then .utilization * 100 else .utilization end
              else null end)
         else null end;
+    # A scalar entry value must not abort the scan (jq errors on indexing
+    # non-objects, and one error would blank the ENTIRE extraction — every
+    # field of the statusline, not just this segment).
     def fable_rate:
         (.seven_day_fable // .fable //
          ([to_entries[] |
             select(
                 (.key | tostring | ascii_downcase | contains("fable")) or
-                (((.value.scope.model.display_name // .value.model.display_name //
-                   .value.display_name // "") | ascii_downcase | contains("fable")))
+                (((.value | try (.scope.model.display_name // .model.display_name //
+                   .display_name) catch null) // "") | ascii_downcase | contains("fable"))
             ) | .value] | first) //
          .seven_day_overage_included) | percentage;
+    # rate_limits itself may be absent or (defensively) a non-object; guard
+    # every access so a malformed payload degrades to empty fields, not a
+    # blank statusline.
+    def rl: .rate_limits // {} | if type == "object" then . else {} end;
     [
         .cwd // "",
         .transcript_path // "",
         .session_id // "",
         .model.id // "claude-sonnet-4-5-20250929",
-        (.rate_limits.five_hour.used_percentage // "" | tostring),
-        (.rate_limits.seven_day.used_percentage // "" | tostring),
-        ((.rate_limits // {} | fable_rate) // "" | tostring),
+        ((rl | try (.five_hour.used_percentage) catch null) // "" | tostring),
+        ((rl | try (.seven_day.used_percentage) catch null) // "" | tostring),
+        ((rl | try fable_rate catch null) // "" | tostring),
         .session_name // "",
         (.cost.total_cost_usd // "" | tostring),
         (.context_window.used_percentage // "" | tostring),
@@ -68,15 +72,20 @@ IFS=$'\x1f' read -r cwd transcript_path session_id model_id rate_5h rate_7d rate
     ] | join("\u001f")' 2>/dev/null
 )
 
+# Cache directory (conversation names, PR status, tab title, update badges,
+# diagnostics). CLAUDE_PULSE_CACHE_DIR overrides for isolated testing, like
+# RED_ALERT_STATE_FILE does for the alert daemon.
+cache_dir="${CLAUDE_PULSE_CACHE_DIR:-$HOME/.cache/claude-pulse}"
+
 # One-shot rate-limits diagnostic (CLAUDE_PULSE_DEBUG_RATE_LIMITS=1).
-# Claude Code 2.1.207 shows Fable usage in /usage but omits it from the
-# statusline payload; this records WHICH rate_limits keys your Claude Code
+# Claude Code (as of 2.1.207) shows Fable usage in /usage but omits it from
+# the statusline payload; this records WHICH rate_limits keys your Claude Code
 # actually sends, so payload changes in future versions are easy to verify.
 # Privacy-safe by construction: only capture time, Claude Code version, model
 # id, and rate_limits key NAMES are written — never usage values, session ids,
 # paths, or costs. Written once; delete the file to capture again.
 if [[ "$CLAUDE_PULSE_DEBUG_RATE_LIMITS" == "1" ]]; then
-    _rl_debug_file="${CLAUDE_PULSE_DEBUG_RATE_LIMITS_FILE:-$HOME/.cache/claude-pulse/rate-limits-debug.json}"
+    _rl_debug_file="${CLAUDE_PULSE_DEBUG_RATE_LIMITS_FILE:-$cache_dir/rate-limits-debug.json}"
     if [[ ! -e "$_rl_debug_file" ]]; then
         mkdir -p "$(dirname "$_rl_debug_file")" 2>/dev/null
         (
@@ -85,7 +94,8 @@ if [[ "$CLAUDE_PULSE_DEBUG_RATE_LIMITS" == "1" ]]; then
                 captured_at: (now | todate),
                 claude_code_version: (.version // null),
                 model: (.model.id // null),
-                rate_limit_keys: ((.rate_limits // {}) | keys)
+                rate_limit_keys: ((.rate_limits // {})
+                                  | if type == "object" then keys else [] end)
             }' > "$_rl_debug_file" 2>/dev/null
         ) || rm -f "$_rl_debug_file" 2>/dev/null
     fi
@@ -258,9 +268,6 @@ else
     color="$C_GREEN"
 fi
 reset="$C_RESET"
-
-# Cache directory for conversation names and PR lookups
-cache_dir="$HOME/.cache/claude-pulse"
 
 # Generate a short name via AI APIs. Takes prompt as $1, returns name via stdout.
 generate_name_via_api() {

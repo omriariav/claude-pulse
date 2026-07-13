@@ -268,15 +268,12 @@ $model_short = $model_name -replace '^Opus ', 'Op' -replace '^Sonnet ', 'Son' -r
 # Rate limits / cost / effort (Pro/Max + recent Claude Code only; null when absent)
 $rate_5h = Convert-ToPulseString (Get-NestedValue $data @('rate_limits', 'five_hour', 'used_percentage'))
 $rate_7d = Convert-ToPulseString (Get-NestedValue $data @('rate_limits', 'seven_day', 'used_percentage'))
-# Fable weekly quota. Claude Code 2.1.207 does NOT emit it in the statusline
-# payload: its payload builder copies only five_hour and seven_day, even though
-# /usage shows "Current week (Fable)" (fetched separately from the OAuth usage
-# endpoint) and the internal header-derived bucket is named
-# seven_day_overage_included. All lookups below are therefore future-proofing —
-# semantic keys first, then Fable-scoped metadata, then the internal bucket
-# name — so the segment lights up unchanged the moment a newer Claude Code
-# starts emitting any of them. Absent -> hidden. Set
-# CLAUDE_PULSE_DEBUG_RATE_LIMITS=1 to capture which keys your Claude Code sends.
+# Fable weekly quota — NOT emitted by Claude Code as of 2.1.207; the lookups
+# below (semantic keys -> Fable-scoped metadata -> seven_day_overage_included)
+# are future-proofing so the segment lights up when a newer Claude Code emits
+# any of them. Absent -> hidden. Mirrors the bash script; investigation notes
+# in CLAUDE.md "Statusline JSON schema". CLAUDE_PULSE_DEBUG_RATE_LIMITS=1
+# captures the keys you receive.
 $fableRateNode = Get-NestedValue $data @('rate_limits', 'seven_day_fable')
 if ($null -eq $fableRateNode) { $fableRateNode = Get-NestedValue $data @('rate_limits', 'fable') }
 if ($null -eq $fableRateNode -and $null -ne $data.rate_limits) {
@@ -301,15 +298,22 @@ if (-not $rate_fable) {
 $cost_usd = Convert-ToPulseString (Get-NestedValue $data @('cost', 'total_cost_usd'))
 $effort = Convert-ToPulseString (Get-NestedValue $data @('effort', 'level'))
 
+# Cache directory (conversation names, PR status, diagnostics).
+# CLAUDE_PULSE_CACHE_DIR overrides for isolated testing.
+$cache_dir = if ($env:CLAUDE_PULSE_CACHE_DIR) {
+    $env:CLAUDE_PULSE_CACHE_DIR
+} else {
+    Join-Path $HOME ".cache" "claude-pulse"
+}
+
 # One-shot rate-limits diagnostic (CLAUDE_PULSE_DEBUG_RATE_LIMITS=1). Mirrors
-# the bash script: only capture time, Claude Code version, model id, and
-# rate_limits key NAMES are written — never usage values, session ids, paths,
-# or costs. Written once; delete the file to capture again.
+# the bash script's diagnostic — see claude-pulse for the rationale. Only key
+# NAMES are written (sorted, matching jq `keys`), never values/ids/paths.
 if ($env:CLAUDE_PULSE_DEBUG_RATE_LIMITS -eq '1') {
     $rlDebugFile = if ($env:CLAUDE_PULSE_DEBUG_RATE_LIMITS_FILE) {
         $env:CLAUDE_PULSE_DEBUG_RATE_LIMITS_FILE
     } else {
-        Join-Path $HOME ".cache/claude-pulse/rate-limits-debug.json"
+        Join-Path $cache_dir "rate-limits-debug.json"
     }
     if (-not (Test-Path $rlDebugFile)) {
         try {
@@ -318,16 +322,31 @@ if ($env:CLAUDE_PULSE_DEBUG_RATE_LIMITS -eq '1') {
                 New-Item -ItemType Directory -Path $rlDebugDir -Force | Out-Null
             }
             $rlKeys = @()
-            if ($null -ne $data.rate_limits) {
-                $rlKeys = @($data.rate_limits.PSObject.Properties | ForEach-Object { $_.Name })
+            # PSCustomObject check keeps a non-object rate_limits (string,
+            # number) from reporting its .NET properties (e.g. Length) as keys.
+            if ($data.rate_limits -is [System.Management.Automation.PSCustomObject]) {
+                $rlKeys = @($data.rate_limits.PSObject.Properties.Name | Sort-Object)
             }
-            [ordered]@{
-                captured_at         = [DateTime]::UtcNow.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'")
-                claude_code_version = if ($data.version) { [string]$data.version } else { $null }
-                model               = if ($data.model -and $data.model.id) { [string]$data.model.id } else { $null }
+            # Empty -> $null so missing fields serialize as JSON null, matching
+            # the bash artifact (`.version // null`).
+            $rlVersion = Convert-ToPulseString (Get-NestedValue $data @('version'))
+            $rlModel = Convert-ToPulseString (Get-NestedValue $data @('model', 'id'))
+            $rlJson = [ordered]@{
+                captured_at         = [DateTime]::UtcNow.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", [System.Globalization.CultureInfo]::InvariantCulture)
+                claude_code_version = if ($rlVersion) { $rlVersion } else { $null }
+                model               = if ($rlModel) { $rlModel } else { $null }
                 rate_limit_keys     = $rlKeys
-            } | ConvertTo-Json -Compress | Set-Content -Path $rlDebugFile -Encoding UTF8
-        } catch {}
+            } | ConvertTo-Json -Compress
+            # WriteAllText for BOM-less UTF-8 — Windows PowerShell 5.1's
+            # Set-Content -Encoding UTF8 prepends a BOM that jq rejects.
+            $rlResolvedDir = (Resolve-Path -LiteralPath $rlDebugDir).Path
+            $rlResolvedFile = Join-Path $rlResolvedDir (Split-Path $rlDebugFile -Leaf)
+            [System.IO.File]::WriteAllText($rlResolvedFile, $rlJson)
+        } catch {
+            # Never leave a partial file behind — it would block the one-shot
+            # retry (mirrors the bash `|| rm -f`).
+            Remove-Item -LiteralPath $rlDebugFile -Force -ErrorAction SilentlyContinue
+        }
     }
 }
 
@@ -400,9 +419,6 @@ if ($percent -ge 80) {
     $color = "`e[32m"  # Green — plenty of room
 }
 $reset = "`e[0m"
-
-# Cache directory for conversation names and PR lookups
-$cache_dir = Join-Path $HOME ".cache" "claude-pulse"
 
 # Generate a short name via AI APIs
 function Get-ConversationName {

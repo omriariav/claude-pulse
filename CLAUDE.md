@@ -55,7 +55,7 @@ Key alignment rules:
 - **Regular** line 2: `%2d` for 5h/7d/Fable
 - **Heavy** line 2: `%2d` for 5h, `%3d` for 7d/Fable, `%4s` for cost
 
-Env vars: `CLAUDE_PULSE_DENSITY` (minimal/regular/heavy/taboola), `CLAUDE_PULSE_HIDE_COST` (set to hide `💰` in heavy/taboola mode — recommended for Max/Pro users), `CLAUDE_PULSE_HIDE_DIFF` (set to hide `📝` git diff stats), `CLAUDE_PULSE_DEBUG_RATE_LIMITS=1` (one-shot privacy-safe dump of received rate-limit key names — see Model detection section)
+Env vars: `CLAUDE_PULSE_DENSITY` (minimal/regular/heavy/taboola), `CLAUDE_PULSE_HIDE_COST` (set to hide `💰` in heavy/taboola mode — recommended for Max/Pro users), `CLAUDE_PULSE_HIDE_DIFF` (set to hide `📝` git diff stats), `CLAUDE_PULSE_DEBUG_RATE_LIMITS=1` (one-shot privacy-safe dump of received rate-limit key names — see the Statusline JSON schema section)
 
 ### Git diff stats (v3.1.0)
 
@@ -96,7 +96,7 @@ Shows uncommitted changes (staged + unstaged) via `LC_ALL=C git diff HEAD --shor
 - **City mapping**: English→Hebrew mapping uses a `case` statement (not `declare -A`) for bash 3.2 compatibility on macOS.
 - **Alert persistence**: Active alerts shown for 60s, pre-alerts for 20min, all-clear for 15s after last detection.
 - **Mock mode**: `RED_ALERT_MODE=mock` cycles through fake alerts for testing without API calls.
-- **Testable paths**: `RED_ALERT_STATE_FILE` and `RED_ALERT_PID_FILE` env vars override defaults for isolated testing.
+- **Testable paths**: `RED_ALERT_STATE_FILE` and `RED_ALERT_PID_FILE` env vars override defaults for isolated testing. Similarly, `CLAUDE_PULSE_CACHE_DIR` overrides `~/.cache/claude-pulse` (name/PR caches, update badges, diagnostics) — the test suite sandboxes it in `helpers.sh setup()` so runs are hermetic against the developer's real cache.
 
 ## Development
 

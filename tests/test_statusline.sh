@@ -189,7 +189,7 @@ echo "Testing rate-limits diagnostic..."
 diag_file="$TEST_TMPDIR/rl-diag.json"
 
 # Not written unless explicitly enabled
-echo "$payload_207" | CLAUDE_PULSE_DEBUG_RATE_LIMITS_FILE="$diag_file" "$PULSE" >/dev/null 2>&1
+echo "$payload_207" | CLAUDE_PULSE_DEBUG_RATE_LIMITS="" CLAUDE_PULSE_DEBUG_RATE_LIMITS_FILE="$diag_file" "$PULSE" >/dev/null 2>&1
 assert_equals "$([[ -e "$diag_file" ]] && echo present || echo absent)" "absent" "diagnostic not written when env var unset"
 
 # One-shot capture with the exact 2.1.207 payload
@@ -227,6 +227,35 @@ diag_file3="$TEST_TMPDIR/rl-diag-empty.json"
 echo '{"cwd":"/test","version":"2.1.207","model":{"id":"claude-opus-4-6"},"context_window":{"total_input_tokens":1,"total_output_tokens":1,"context_window_size":200000}}' |
     CLAUDE_PULSE_DEBUG_RATE_LIMITS=1 CLAUDE_PULSE_DEBUG_RATE_LIMITS_FILE="$diag_file3" "$PULSE" >/dev/null 2>&1
 assert_contains "$(cat "$diag_file3" 2>/dev/null)" '"rate_limit_keys":[]' "diagnostic handles missing rate_limits object"
+
+# Non-object rate_limits also degrades to an empty key list (jq `keys` on a
+# string used to abort the write, silently skipping the capture)
+diag_file4="$TEST_TMPDIR/rl-diag-nonobj.json"
+echo '{"cwd":"/test","version":"2.1.207","model":{"id":"claude-opus-4-6"},"context_window":{"total_input_tokens":1,"total_output_tokens":1,"context_window_size":200000},"rate_limits":"unexpected"}' |
+    CLAUDE_PULSE_DEBUG_RATE_LIMITS=1 CLAUDE_PULSE_DEBUG_RATE_LIMITS_FILE="$diag_file4" "$PULSE" >/dev/null 2>&1
+assert_contains "$(cat "$diag_file4" 2>/dev/null)" '"rate_limit_keys":[]' "diagnostic handles non-object rate_limits"
+
+# --- Malformed rate_limits robustness ---
+echo ""
+echo "Testing malformed rate_limits robustness..."
+
+# Regression: a scalar bucket value used to make the fable_rate scan index a
+# number, aborting the ENTIRE jq extraction — model, cwd, and all rates
+# blanked, not just the Fable segment.
+out_scalar_sibling=$(run_pulse '{"rate_limits":{"five_hour":{"used_percentage":10},"weird_bucket":5}}')
+assert_contains "$out_scalar_sibling" "Opus 4.6" "scalar sibling bucket does not blank model detection"
+assert_contains "$out_scalar_sibling" "5h:10%" "scalar sibling bucket does not blank 5h rate"
+
+# A scalar Fable bucket is a supported shape (percentage() handles numbers)
+out_scalar_fable=$(run_pulse '{"rate_limits":{"seven_day_overage_included":96}}')
+assert_contains "$out_scalar_fable" "Opus 4.6" "scalar Fable bucket does not blank model detection"
+assert_contains "$out_scalar_fable" "Fable:" "scalar Fable bucket renders the Fable segment"
+assert_contains "$out_scalar_fable" "96%" "scalar Fable bucket renders its percentage"
+
+# rate_limits as a non-object degrades to no rate segments, not a blank line
+out_rl_nonobj=$(run_pulse '{"rate_limits":"unexpected-string"}')
+assert_contains "$out_rl_nonobj" "Opus 4.6" "non-object rate_limits does not blank the statusline"
+assert_not_contains "$out_rl_nonobj" "5h:" "non-object rate_limits shows no rate segments"
 
 # --- Progress bar tests ---
 echo ""
