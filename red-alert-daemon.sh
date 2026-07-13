@@ -1,5 +1,5 @@
 #!/bin/bash
-# red-alert-daemon.sh v3.3.1: Background daemon for Pikud HaOref alert monitoring
+# red-alert-daemon.sh v3.4.0: Background daemon for Pikud HaOref alert monitoring
 # Polls the official alert API every 2 seconds and writes state to disk
 # Supports: normal mode (API), all mode (API, no filter), mock mode (offline testing)
 

@@ -1,5 +1,22 @@
 # Release Notes
 
+## v3.4.0 - Fable usage across all views
+
+**Released:** July 13, 2026
+
+### Features
+
+- **Fable weekly quota is visible in every statusline view** — minimal, regular, heavy, and `taboola` now render a health-colored `Fable:<percent>%` segment alongside the existing 5h and all-model 7d limits.
+- **Bash and PowerShell parity** — both implementations expose the Fable quota, including the default Windows layout and the opt-in `taboola` layout.
+- **Capability-driven detection** — semantic Fable keys and model-scope metadata are preferred, with Claude Code's current `seven_day_overage_included` key retained as a compatibility fallback. The segment disappears automatically when no separate Fable quota is advertised.
+- **Flexible percentage formats** — accepts `used_percentage`, `percent`, fractional `utilization`, or a direct numeric value.
+
+### Tests
+
+- Fable rendering is covered across all four Bash densities.
+- Regression coverage verifies semantic-key precedence, scoped metadata discovery, fractional utilization conversion, the current compatibility fallback, and omission when Fable usage is absent.
+- `tests/test_taboola.sh` separately covers the compact Fable segment and absence behavior.
+
 ## v3.3.1 - amq-squad current-pane identity
 
 **Released:** June 29, 2026
