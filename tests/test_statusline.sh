@@ -140,6 +140,28 @@ assert_contains "$out_rate_yellow" "255;215;0m" "rate yellow at 55%"
 out_rate_red=$(run_pulse '{"rate_limits":{"five_hour":{"used_percentage":90}}}')
 assert_contains "$out_rate_red" "255;85;85m" "rate red at 90%"
 
+# Fable quota is rendered in every density, using the current legacy API key.
+for density in minimal regular heavy taboola; do
+    out_fable=$(echo '{"cwd":"/test","model":{"id":"claude-fable-5"},"context_window":{"total_input_tokens":50000,"total_output_tokens":5000,"context_window_size":200000},"rate_limits":{"five_hour":{"used_percentage":12},"seven_day":{"used_percentage":63},"seven_day_overage_included":{"used_percentage":96}}}' |
+        CLAUDE_PULSE_DENSITY="$density" "$PULSE" 2>/dev/null)
+    assert_contains "$out_fable" "Fable:" "Fable quota shown in $density density"
+    assert_contains "$out_fable" "96%" "Fable quota value shown in $density density"
+done
+
+# Future semantic keys and scoped metadata take precedence over the legacy key.
+out_fable_alias=$(run_pulse '{"rate_limits":{"seven_day_fable":{"used_percentage":71},"seven_day_overage_included":{"used_percentage":99}}}')
+assert_contains "$out_fable_alias" "Fable: 71%" "semantic Fable key preferred over legacy alias"
+assert_not_contains "$out_fable_alias" "Fable: 99%" "legacy alias ignored when semantic key exists"
+
+out_fable_scoped=$(run_pulse '{"rate_limits":{"future_weekly_bucket":{"used_percentage":42,"scope":{"model":{"display_name":"Claude Fable 5"}}}}}')
+assert_contains "$out_fable_scoped" "Fable: 42%" "Fable quota discovered from scope metadata"
+
+out_fable_utilization=$(run_pulse '{"rate_limits":{"fable":{"utilization":0.37}}}')
+assert_contains "$out_fable_utilization" "Fable: 37%" "Fable quota accepts fractional utilization shape"
+
+out_no_fable=$(run_pulse '{"rate_limits":{"five_hour":{"used_percentage":12},"seven_day":{"used_percentage":34}}}')
+assert_not_contains "$out_no_fable" "Fable:" "Fable quota hidden when Anthropic does not advertise one"
+
 # --- Progress bar tests ---
 echo ""
 echo "Testing progress bar..."

@@ -80,6 +80,12 @@ out=$(run_taboola "/tmp" '{"rate_limits":{"five_hour":{"used_percentage":23.5},"
 assert_contains "$out" "5h:23%" "taboola: shows 5h limit"
 assert_contains "$out" "7d:41%" "taboola: shows 7d limit"
 
+# Fable-specific weekly quota (current API key), hidden when absent
+out=$(run_taboola "/tmp" '{"rate_limits":{"five_hour":{"used_percentage":23},"seven_day":{"used_percentage":41},"seven_day_overage_included":{"used_percentage":96}}}' | strip)
+assert_contains "$out" "Fable:96%" "taboola: shows Fable weekly limit"
+out=$(run_taboola "/tmp" '{"rate_limits":{"five_hour":{"used_percentage":23},"seven_day":{"used_percentage":41}}}' | strip)
+assert_not_contains "$out" "Fable:" "taboola: hides Fable limit when absent"
+
 # API cost shown, and hidden via CLAUDE_PULSE_HIDE_COST / when $0
 out=$(echo '{"cwd":"/tmp","model":{"id":"claude-opus-4-8"},"context_window":{"total_input_tokens":120000,"total_output_tokens":5000,"context_window_size":200000},"cost":{"total_cost_usd":0.42}}' \
     | env -u RED_ALERT_CITIES -u RED_ALERT_MODE CLAUDE_PULSE_DENSITY=taboola "$PULSE" 2>/dev/null | strip)

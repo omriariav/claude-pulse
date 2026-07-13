@@ -23,14 +23,35 @@ C_YELLOW_BG=$'\033[43;30m'
 SEP="${C_DIM}│${C_RESET}"
 
 # Extract values from JSON (single jq call, Unit Separator delimiter)
-IFS=$'\x1f' read -r cwd transcript_path session_id model_id rate_5h rate_7d session_name cost_usd used_pct display_name effort < <(
-    echo "$input" | jq -j '[
+IFS=$'\x1f' read -r cwd transcript_path session_id model_id rate_5h rate_7d rate_fable session_name cost_usd used_pct display_name effort < <(
+    echo "$input" | jq -j '
+    # Prefer semantically named/scoped fields so this survives Anthropic renaming
+    # the quota. seven_day_overage_included is the current (2.1.207) legacy key.
+    def percentage:
+        if type == "number" then .
+        elif type == "object" then
+            .used_percentage // .percent //
+            (if (.utilization | type) == "number" then
+                if .utilization <= 1 then .utilization * 100 else .utilization end
+             else null end)
+        else null end;
+    def fable_rate:
+        (.seven_day_fable // .fable //
+         ([to_entries[] |
+            select(
+                (.key | tostring | ascii_downcase | contains("fable")) or
+                (((.value.scope.model.display_name // .value.model.display_name //
+                   .value.display_name // "") | ascii_downcase | contains("fable")))
+            ) | .value] | first) //
+         .seven_day_overage_included) | percentage;
+    [
         .cwd // "",
         .transcript_path // "",
         .session_id // "",
         .model.id // "claude-sonnet-4-5-20250929",
         (.rate_limits.five_hour.used_percentage // "" | tostring),
         (.rate_limits.seven_day.used_percentage // "" | tostring),
+        ((.rate_limits // {} | fable_rate) // "" | tostring),
         .session_name // "",
         (.cost.total_cost_usd // "" | tostring),
         (.context_window.used_percentage // "" | tostring),
@@ -904,8 +925,10 @@ fi
 # Parse rate limit values and determine colors
 rate_5h_int=0
 rate_7d_int=0
+rate_fable_int=0
 rate_5h_color="$C_GREEN"
-rate_7d_color=""
+rate_7d_color="$C_GREEN"
+rate_fable_color="$C_GREEN"
 if [[ -n "$rate_5h" ]]; then
     rate_5h_int=${rate_5h%.*}
     if (( rate_5h_int >= 80 )); then
@@ -920,6 +943,14 @@ if [[ -n "$rate_7d" ]]; then
         rate_7d_color="$C_RED"
     elif (( rate_7d_int >= 50 )); then
         rate_7d_color="$C_YELLOW"
+    fi
+fi
+if [[ -n "$rate_fable" ]]; then
+    rate_fable_int=${rate_fable%.*}
+    if (( rate_fable_int >= 80 )); then
+        rate_fable_color="$C_RED"
+    elif (( rate_fable_int >= 50 )); then
+        rate_fable_color="$C_YELLOW"
     fi
 fi
 
@@ -1013,10 +1044,19 @@ case "$density" in
         else
             printf " ${SEP} ${short_cwd}${diff_segment}"
         fi
-        if [[ -n "$rate_5h" ]]; then
-            printf " ${SEP} ⚡${rate_5h_color}5h:%2d%%${reset}" "$rate_5h_int"
+        if [[ -n "$rate_5h" || -n "$rate_7d" || -n "$rate_fable" ]]; then
+            printf " ${SEP} ⚡"
+            _rate_sep=""
+            if [[ -n "$rate_5h" ]]; then
+                printf "${rate_5h_color}5h:%2d%%${reset}" "$rate_5h_int"
+                _rate_sep=" "
+            fi
             if [[ -n "$rate_7d" ]]; then
-                printf " 7d:%2d%%" "$rate_7d_int"
+                printf "%s${rate_7d_color}7d:%2d%%${reset}" "$_rate_sep" "$rate_7d_int"
+                _rate_sep=" "
+            fi
+            if [[ -n "$rate_fable" ]]; then
+                printf "%s${rate_fable_color}Fable:%2d%%${reset}" "$_rate_sep" "$rate_fable_int"
             fi
         fi
         if [[ -n "$alert_part" ]]; then
@@ -1030,10 +1070,19 @@ case "$density" in
         # Line 1: emoji-separated segments (double-space between)
         printf "${color}🧠 ${bar} ${percent}%%${reset}  🤖 ${model_name} (${context_label})${name_segment}${pr_segment}${diff_segment}  📁 ${short_cwd}"
         # Line 2: rates + alerts (only shown when data exists)
-        if [[ -n "$rate_5h" ]]; then
-            printf "\n⚡ ${rate_5h_color}5h:%2d%%${reset}" "$rate_5h_int"
+        if [[ -n "$rate_5h" || -n "$rate_7d" || -n "$rate_fable" ]]; then
+            printf "\n⚡ "
+            _rate_sep=""
+            if [[ -n "$rate_5h" ]]; then
+                printf "${rate_5h_color}5h:%2d%%${reset}" "$rate_5h_int"
+                _rate_sep="  "
+            fi
             if [[ -n "$rate_7d" ]]; then
-                printf "  ${rate_7d_color}7d:%2d%%${reset}" "$rate_7d_int"
+                printf "%s${rate_7d_color}7d:%2d%%${reset}" "$_rate_sep" "$rate_7d_int"
+                _rate_sep="  "
+            fi
+            if [[ -n "$rate_fable" ]]; then
+                printf "%s${rate_fable_color}Fable:%2d%%${reset}" "$_rate_sep" "$rate_fable_int"
             fi
             if [[ -n "$alert_part" ]]; then
                 printf "  ${alert_part}"
@@ -1052,10 +1101,19 @@ case "$density" in
         # Line 1: (%2d pads percent so · before 🤖 stacks with · before 🟢)
         printf "${color}🧠 ${bar} %2d%%${reset} · 🤖 ${model_name} (${context_label})${name_segment}${pr_segment}${diff_segment} · 📁 ${short_cwd}" "$percent"
         # Line 2: rates + cost + alerts
-        if [[ -n "$rate_5h" ]]; then
-            printf "\n⚡ ${rate_5h_color}5h:%2d%%${reset}" "$rate_5h_int"
+        if [[ -n "$rate_5h" || -n "$rate_7d" || -n "$rate_fable" ]]; then
+            printf "\n⚡ "
+            _rate_sep=""
+            if [[ -n "$rate_5h" ]]; then
+                printf "${rate_5h_color}5h:%2d%%${reset}" "$rate_5h_int"
+                _rate_sep=" · "
+            fi
             if [[ -n "$rate_7d" ]]; then
-                printf " · ${rate_7d_color}7d:%3d%%${reset}" "$rate_7d_int"
+                printf "%s${rate_7d_color}7d:%3d%%${reset}" "$_rate_sep" "$rate_7d_int"
+                _rate_sep=" · "
+            fi
+            if [[ -n "$rate_fable" ]]; then
+                printf "%s${rate_fable_color}Fable:%3d%%${reset}" "$_rate_sep" "$rate_fable_int"
             fi
             printf "${cost_part}"
             if [[ -n "$alert_part" ]]; then
@@ -1081,7 +1139,7 @@ case "$density" in
     taboola)
         # Single line — mimics taboola-sales-skills/.claude/statusline.sh exactly:
         # standard 16-color ANSI (theme-adaptive, not truecolor), DIM │ separators,
-        # NO_COLOR honored. Enriched with claude-pulse data: amq-squad, effort, 5h/7d, cost, alerts.
+        # NO_COLOR honored. Enriched with claude-pulse data: amq-squad, effort, 5h/7d/Fable, cost, alerts.
         if [[ -z "${NO_COLOR:-}" ]]; then
             T_RST=$'\033[0m'; T_DIM=$'\033[2m'; T_RED=$'\033[31m'; T_GRN=$'\033[32m'
             T_YEL=$'\033[33m'; T_BLU=$'\033[34m'; T_MAG=$'\033[35m'; T_CYN=$'\033[36m'
@@ -1161,19 +1219,28 @@ case "$density" in
         else                           _tb_cc="$T_GRN"; fi
         _tb_ctx="${_tb_cc}${_tb_rem}%${T_RST}"
 
-        # 5h / 7d rate limits (Pro/Max only — absent otherwise), health-colored
+        # 5h / 7d / Fable rate limits (absent when unsupported), health-colored
         _tb_rates=""
+        _tb_rate_sep=""
         if [[ -n "$rate_5h" ]]; then
             if   (( rate_5h_int >= 80 )); then _tb_5c="$T_RED"
             elif (( rate_5h_int >= 50 )); then _tb_5c="$T_YEL"
             else                               _tb_5c="$T_GRN"; fi
             _tb_rates="${_tb_5c}5h:${rate_5h_int}%${T_RST}"
-            if [[ -n "$rate_7d" ]]; then
-                if   (( rate_7d_int >= 80 )); then _tb_7c="$T_RED"
-                elif (( rate_7d_int >= 50 )); then _tb_7c="$T_YEL"
-                else                               _tb_7c="$T_GRN"; fi
-                _tb_rates="${_tb_rates} ${_tb_7c}7d:${rate_7d_int}%${T_RST}"
-            fi
+            _tb_rate_sep=" "
+        fi
+        if [[ -n "$rate_7d" ]]; then
+            if   (( rate_7d_int >= 80 )); then _tb_7c="$T_RED"
+            elif (( rate_7d_int >= 50 )); then _tb_7c="$T_YEL"
+            else                               _tb_7c="$T_GRN"; fi
+            _tb_rates="${_tb_rates}${_tb_rate_sep}${_tb_7c}7d:${rate_7d_int}%${T_RST}"
+            _tb_rate_sep=" "
+        fi
+        if [[ -n "$rate_fable" ]]; then
+            if   (( rate_fable_int >= 80 )); then _tb_fc="$T_RED"
+            elif (( rate_fable_int >= 50 )); then _tb_fc="$T_YEL"
+            else                                   _tb_fc="$T_GRN"; fi
+            _tb_rates="${_tb_rates}${_tb_rate_sep}${_tb_fc}Fable:${rate_fable_int}%${T_RST}"
         fi
 
         # API cost (cents precision; skip $0 and when hidden) — neutral color (default fg),
