@@ -268,6 +268,30 @@ $model_short = $model_name -replace '^Opus ', 'Op' -replace '^Sonnet ', 'Son' -r
 # Rate limits / cost / effort (Pro/Max + recent Claude Code only; null when absent)
 $rate_5h = Convert-ToPulseString (Get-NestedValue $data @('rate_limits', 'five_hour', 'used_percentage'))
 $rate_7d = Convert-ToPulseString (Get-NestedValue $data @('rate_limits', 'seven_day', 'used_percentage'))
+# Anthropic currently exposes Fable as seven_day_overage_included. Prefer
+# semantic aliases/metadata so a future rename keeps working, and hide it when
+# no separate Fable quota is advertised.
+$fableRateNode = Get-NestedValue $data @('rate_limits', 'seven_day_fable')
+if ($null -eq $fableRateNode) { $fableRateNode = Get-NestedValue $data @('rate_limits', 'fable') }
+if ($null -eq $fableRateNode -and $null -ne $data.rate_limits) {
+    $fableRateNode = $data.rate_limits.PSObject.Properties |
+        Where-Object {
+            $_.Name -match 'fable' -or
+            (Convert-ToPulseString (Get-NestedValue $_.Value @('scope', 'model', 'display_name'))) -match 'fable' -or
+            (Convert-ToPulseString (Get-NestedValue $_.Value @('model', 'display_name'))) -match 'fable' -or
+            (Convert-ToPulseString (Get-NestedValue $_.Value @('display_name'))) -match 'fable'
+        } | Select-Object -First 1 -ExpandProperty Value
+}
+if ($null -eq $fableRateNode) { $fableRateNode = Get-NestedValue $data @('rate_limits', 'seven_day_overage_included') }
+$rate_fable = if ($fableRateNode -is [ValueType] -or $fableRateNode -is [string]) { Convert-ToPulseString $fableRateNode } else { Convert-ToPulseString (Get-NestedValue $fableRateNode @('used_percentage')) }
+if (-not $rate_fable) { $rate_fable = Convert-ToPulseString (Get-NestedValue $fableRateNode @('percent')) }
+if (-not $rate_fable) {
+    $fableUtilization = Convert-ToPulseString (Get-NestedValue $fableRateNode @('utilization'))
+    $fableUtilParsed = 0.0
+    if ([double]::TryParse("$fableUtilization", [ref]$fableUtilParsed)) {
+        $rate_fable = if ($fableUtilParsed -le 1) { $fableUtilParsed * 100 } else { $fableUtilParsed }
+    }
+}
 $cost_usd = Convert-ToPulseString (Get-NestedValue $data @('cost', 'total_cost_usd'))
 $effort = Convert-ToPulseString (Get-NestedValue $data @('effort', 'level'))
 
@@ -782,20 +806,28 @@ if ($env:CLAUDE_PULSE_DENSITY -eq 'taboola') {
     $cc = if ($rem -le 20) { $tRed } elseif ($rem -le 40) { $tYel } else { $tGrn }
     $segCtx = "$cc$rem%$tRst"
 
-    # 5h / 7d rate limits, health-colored
+    # 5h / 7d / Fable rate limits, health-colored
     $segRates = ""
+    $rateParts = @()
     $rate5Parsed = 0.0
     if ($null -ne $rate_5h -and "$rate_5h" -ne "" -and [double]::TryParse("$rate_5h", [ref]$rate5Parsed)) {
         $r5 = [int][math]::Floor($rate5Parsed)
         $c5 = if ($r5 -ge 80) { $tRed } elseif ($r5 -ge 50) { $tYel } else { $tGrn }
-        $segRates = "${c5}5h:$r5%$tRst"
-        $rate7Parsed = 0.0
-        if ($null -ne $rate_7d -and "$rate_7d" -ne "" -and [double]::TryParse("$rate_7d", [ref]$rate7Parsed)) {
-            $r7 = [int][math]::Floor($rate7Parsed)
-            $c7 = if ($r7 -ge 80) { $tRed } elseif ($r7 -ge 50) { $tYel } else { $tGrn }
-            $segRates += " ${c7}7d:$r7%$tRst"
-        }
+        $rateParts += "${c5}5h:$r5%$tRst"
     }
+    $rate7Parsed = 0.0
+    if ($null -ne $rate_7d -and "$rate_7d" -ne "" -and [double]::TryParse("$rate_7d", [ref]$rate7Parsed)) {
+        $r7 = [int][math]::Floor($rate7Parsed)
+        $c7 = if ($r7 -ge 80) { $tRed } elseif ($r7 -ge 50) { $tYel } else { $tGrn }
+        $rateParts += "${c7}7d:$r7%$tRst"
+    }
+    $rateFableParsed = 0.0
+    if ($null -ne $rate_fable -and "$rate_fable" -ne "" -and [double]::TryParse("$rate_fable", [ref]$rateFableParsed)) {
+        $rf = [int][math]::Floor($rateFableParsed)
+        $cf = if ($rf -ge 80) { $tRed } elseif ($rf -ge 50) { $tYel } else { $tGrn }
+        $rateParts += "${cf}Fable:$rf%$tRst"
+    }
+    $segRates = $rateParts -join " "
 
     # API cost (cents precision; skip $0 and when hidden). TryParse guards a
     # non-numeric/empty value from throwing on the cast (which would blank the line).
@@ -825,7 +857,22 @@ if ($env:CLAUDE_PULSE_DENSITY -eq 'taboola') {
 }
 
 # Output format: "🧠 [████░░] 72% · 🤖 Model · 💬 Topic · 🌿 branch 📁 /path"
-Write-Host "${color}🧠 $bar ${percent}%${reset} · 🤖 ${model_name} (${context_label})${name_segment}${pr_segment}${diff_segment} · 📁 ${cwd}${alert_segment}"
+$defaultRateParts = @()
+foreach ($rateSpec in @(
+    @{ Label = '5h'; Value = $rate_5h },
+    @{ Label = '7d'; Value = $rate_7d },
+    @{ Label = 'Fable'; Value = $rate_fable }
+)) {
+    $parsedRate = 0.0
+    if ($null -ne $rateSpec.Value -and "$($rateSpec.Value)" -ne "" -and
+        [double]::TryParse("$($rateSpec.Value)", [ref]$parsedRate)) {
+        $roundedRate = [int][math]::Floor($parsedRate)
+        $rateColor = if ($roundedRate -ge 80) { "`e[31m" } elseif ($roundedRate -ge 50) { "`e[33m" } else { "`e[32m" }
+        $defaultRateParts += "$rateColor$($rateSpec.Label):$roundedRate%$reset"
+    }
+}
+$defaultRateSegment = if ($defaultRateParts.Count -gt 0) { "`n⚡ " + ($defaultRateParts -join ' · ') } else { '' }
+Write-Host "${color}🧠 $bar ${percent}%${reset} · 🤖 ${model_name} (${context_label})${name_segment}${pr_segment}${diff_segment} · 📁 ${cwd}${defaultRateSegment}${alert_segment}"
 
 # Always exit success — a non-zero exit makes Claude Code render an empty statusline
 exit 0

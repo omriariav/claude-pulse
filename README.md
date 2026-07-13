@@ -6,7 +6,7 @@
 
 ```
 🧠 [████████░░░░░░░░░░░░] 42% · 🤖 Opus 4.6 (1M) · 💬 API Refactor · 🌿 feat/auth-flow (#12) · 📝 3 files +45 -12 · 📁 my-project
-⚡ 5h: 5% · 7d:  2% · 💰  $3 · 🟢 Alerts daemon ON
+⚡ 5h: 5% · 7d:  2% · Fable:  9% · 💰  $3 · 🟢 Alerts daemon ON
 ```
 
 ## Features
@@ -20,7 +20,7 @@
 - ✅ **Git branch + PR** - Shows current branch and open PR number
 - ✅ **Git diff stats** - Files changed, insertions (+green), deletions (-red) with cyan file count
 - ✅ **Session cost** - Shows cumulative API cost in heavy mode (optional, for pay-per-use plans)
-- ✅ **Rate limits** - 5h/7d usage rates always visible, color-coded
+- ✅ **Rate limits** - 5h/7d and model-scoped Fable usage visible when available, color-coded
 - ✅ **Color-coded warnings** - Green → Yellow → Red as context usage increases (ANSI RGB)
 - ✅ **Interactive setup** - `/setup-statusline` walks you through density, cost, and Red Alert config
 - ✅ **Lightweight** - Pure bash/PowerShell script with minimal dependencies
@@ -31,25 +31,25 @@
 **Heavy** (wide terminals):
 ```
 🧠 [██░░░░░░░░░░░░░░░░░░] 10% · 🤖 Opus 4.6 (1M) · 💬 Topic Name · 🌿 feat/bar (#42) · 📝 3 files +45 -12 · 📁 project
-⚡ 5h: 5% · 7d:  2% · 💰  $12 · 🟢 Alerts daemon ON
+⚡ 5h: 5% · 7d:  2% · Fable:  9% · 💰  $12 · 🟢 Alerts daemon ON
 ```
 
 **Regular** (default):
 ```
 🧠 ██░░░░░░░░ 10%  🤖 Opus 4.6 (1M)  💬 Topic Name  🌿 feat/bar (#42)  📝 3f +45 -12  📁 project
-⚡ 5h: 5%  7d: 2%  🟢 Alerts ON
+⚡ 5h: 5%  7d: 2%  Fable: 9%  🟢 Alerts ON
 ```
 
 **Minimal** (narrow terminals):
 ```
-🧠 10% Op4.6(1M) │ Topic Name │ #42 project │ 3f +45 -12 │ ⚡5h: 5% 7d: 2% │ 🟢
+🧠 10% Op4.6(1M) │ Topic Name │ #42 project │ 3f +45 -12 │ ⚡5h: 5% 7d: 2% Fable: 9% │ 🟢
 ```
 
 **Taboola** (opt-in, slick single line — emoji-free, theme-adaptive 16-color ANSI):
 ```
-project │ feat/bar [↑2] * │ amq:my-squad │ Op4.8 H │ 38% │ 5h:23% 7d:41% │ $0.42 │ 🟢
+project │ feat/bar [↑2] * │ amq:my-squad │ Op4.8 H │ 38% │ 5h:23% 7d:41% Fable:96% │ $0.42 │ 🟢
 ```
-A compact, no-frills line modeled on a hand-rolled team statusline: last-folder dir, branch with ahead/behind + dirty marker, amq-squad team/session, short model label + reasoning **effort**, **remaining** context %, 5h/7d limits, API cost, and the alert glyph. Uses your terminal's own theme colors (not truecolor) and honors `NO_COLOR`. Enable with `CLAUDE_PULSE_DENSITY=taboola`.
+A compact, no-frills line modeled on a hand-rolled team statusline: last-folder dir, branch with ahead/behind + dirty marker, amq-squad team/session, short model label + reasoning **effort**, **remaining** context %, 5h/7d/Fable limits, API cost, and the alert glyph. Uses your terminal's own theme colors (not truecolor) and honors `NO_COLOR`. Enable with `CLAUDE_PULSE_DENSITY=taboola`.
 
 Color changes based on usage:
 - 🟢 **Green** (<50% used): Plenty of room
@@ -243,7 +243,7 @@ Supports English city names, Hebrew names, zone-specific names (e.g., `Tel Aviv 
 
 | Variable | Values | Description |
 |----------|--------|-------------|
-| `CLAUDE_PULSE_DENSITY` | `minimal` / `regular` / `heavy` / `taboola` | Override auto-detected density tier (`taboola` = opt-in slick single line) |
+| `CLAUDE_PULSE_DENSITY` | `minimal` / `regular` / `heavy` / `taboola` | Override auto-detected density tier (`taboola` = opt-in slick single line); all tiers show Fable quota usage when Claude Code provides it |
 | `CLAUDE_PULSE_HIDE_COST` | `1` | Hide session cost (💰) in heavy/taboola mode — recommended for Max/Pro |
 | `NO_COLOR` | (any) | Strip all ANSI color in `taboola` mode |
 | `CLAUDE_PULSE_HIDE_DIFF` | `1` | Hide git diff stats (📝) |
