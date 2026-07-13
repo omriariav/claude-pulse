@@ -16,11 +16,23 @@ setup() {
     # Override state/pid file locations for tests
     export RED_ALERT_STATE_FILE="${TEST_TMPDIR}/red_alert_state.json"
     export RED_ALERT_PID_FILE="${TEST_TMPDIR}/red_alert_daemon.pid"
+    # Sandbox the cache dir so tests never read or write the developer's real
+    # ~/.cache/claude-pulse (name cache, PR cache, update badges, diagnostics)
+    # — a leftover update_notification badge there used to break taboola's
+    # NO_COLOR assertions and the OTA badge tests.
+    export CLAUDE_PULSE_CACHE_DIR="${TEST_TMPDIR}/pulse-cache"
+    # Hermetic against an ambient CLAUDE_PULSE_DEBUG_RATE_LIMITS=1 in the
+    # dev's shell: disable the diagnostic by default and sandbox its path.
+    # Individual tests re-enable it per-invocation with an env prefix.
+    export CLAUDE_PULSE_DEBUG_RATE_LIMITS=""
+    export CLAUDE_PULSE_DEBUG_RATE_LIMITS_FILE="${TEST_TMPDIR}/rl-debug-sandbox.json"
 }
 
 cleanup() {
     [[ -n "$TEST_TMPDIR" ]] && rm -rf "$TEST_TMPDIR"
     unset RED_ALERT_CITIES RED_ALERT_MODE RED_ALERT_STATE_FILE RED_ALERT_PID_FILE
+    unset CLAUDE_PULSE_CACHE_DIR
+    unset CLAUDE_PULSE_DEBUG_RATE_LIMITS CLAUDE_PULSE_DEBUG_RATE_LIMITS_FILE
 }
 
 # Run claude-pulse with minimal JSON input

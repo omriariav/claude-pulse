@@ -55,7 +55,7 @@ Key alignment rules:
 - **Regular** line 2: `%2d` for 5h/7d/Fable
 - **Heavy** line 2: `%2d` for 5h, `%3d` for 7d/Fable, `%4s` for cost
 
-Env vars: `CLAUDE_PULSE_DENSITY` (minimal/regular/heavy/taboola), `CLAUDE_PULSE_HIDE_COST` (set to hide `💰` in heavy/taboola mode — recommended for Max/Pro users), `CLAUDE_PULSE_HIDE_DIFF` (set to hide `📝` git diff stats)
+Env vars: `CLAUDE_PULSE_DENSITY` (minimal/regular/heavy/taboola), `CLAUDE_PULSE_HIDE_COST` (set to hide `💰` in heavy/taboola mode — recommended for Max/Pro users), `CLAUDE_PULSE_HIDE_DIFF` (set to hide `📝` git diff stats), `CLAUDE_PULSE_DEBUG_RATE_LIMITS=1` (one-shot privacy-safe dump of received rate-limit key names — see the Statusline JSON schema section)
 
 ### Git diff stats (v3.1.0)
 
@@ -96,7 +96,7 @@ Shows uncommitted changes (staged + unstaged) via `LC_ALL=C git diff HEAD --shor
 - **City mapping**: English→Hebrew mapping uses a `case` statement (not `declare -A`) for bash 3.2 compatibility on macOS.
 - **Alert persistence**: Active alerts shown for 60s, pre-alerts for 20min, all-clear for 15s after last detection.
 - **Mock mode**: `RED_ALERT_MODE=mock` cycles through fake alerts for testing without API calls.
-- **Testable paths**: `RED_ALERT_STATE_FILE` and `RED_ALERT_PID_FILE` env vars override defaults for isolated testing.
+- **Testable paths**: `RED_ALERT_STATE_FILE` and `RED_ALERT_PID_FILE` env vars override defaults for isolated testing. Similarly, `CLAUDE_PULSE_CACHE_DIR` overrides `~/.cache/claude-pulse` (name/PR caches, update badges, diagnostics) — the test suite sandboxes it in `helpers.sh setup()` so runs are hermetic against the developer's real cache.
 
 ## Development
 
@@ -157,8 +157,10 @@ Claude Code provides these fields to the statusline command via stdin:
 session_id, transcript_path, cwd, model.id, model.display_name,
 workspace, version, cost, context_window (total_input_tokens,
 total_output_tokens, context_window_size, used_percentage,
-remaining_percentage), rate_limits (five_hour/seven_day and optional Fable-scoped .used_percentage),
+remaining_percentage), rate_limits (five_hour/seven_day .used_percentage/.resets_at — nothing else as of 2.1.207),
 effort.level, thinking.enabled
 ```
 
 **Not available**: conversation name — still not exposed by Claude Code in the statusline JSON (native `session_name` from `/rename` is, however). Effort/thinking level became available after 2.1.114.
+
+**Fable weekly quota — NOT exposed to statuslines (verified against the 2.1.207 binary)**: `/usage` shows "Current week (Fable)", but that row comes from a separate OAuth fetch (`GET /api/oauth/usage`) rendered only inside the dialog (and mirrored to the SDK-only `get_usage` control request as `rate_limits.model_scoped`). The statusline payload builder explicitly copies just `five_hour` and `seven_day` out of the in-memory header-derived buckets and drops `seven_day_overage_included` (the Fable bucket). There is no supported, credential-free local source for the value: reaching the OAuth endpoint would require reading Claude Code's stored credentials, and nothing rate-limit-related is persisted to disk. claude-pulse therefore hides the Fable segment on 2.1.207 and keeps the payload-based detection (semantic keys → Fable-scoped metadata → `seven_day_overage_included`) so it lights up automatically when a future Claude Code emits any of them. `CLAUDE_PULSE_DEBUG_RATE_LIMITS=1` writes a one-shot privacy-safe diagnostic (capture time, Claude Code version, model id, rate-limit key names only) to `~/.cache/claude-pulse/rate-limits-debug.json` (path override for tests: `CLAUDE_PULSE_DEBUG_RATE_LIMITS_FILE`); delete the file to re-capture.

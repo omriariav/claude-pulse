@@ -140,7 +140,10 @@ assert_contains "$out_rate_yellow" "255;215;0m" "rate yellow at 55%"
 out_rate_red=$(run_pulse '{"rate_limits":{"five_hour":{"used_percentage":90}}}')
 assert_contains "$out_rate_red" "255;85;85m" "rate red at 90%"
 
-# Fable quota is rendered in every density, using the current legacy API key.
+# Fable quota is rendered in every density when a payload carries the internal
+# bucket name (seven_day_overage_included). NOTE: Claude Code 2.1.207 does not
+# actually emit this key in statusline payloads (see the 2.1.207 shape tests
+# below) — this exercises the future-proof path for a version that does.
 for density in minimal regular heavy taboola; do
     out_fable=$(echo '{"cwd":"/test","model":{"id":"claude-fable-5"},"context_window":{"total_input_tokens":50000,"total_output_tokens":5000,"context_window_size":200000},"rate_limits":{"five_hour":{"used_percentage":12},"seven_day":{"used_percentage":63},"seven_day_overage_included":{"used_percentage":96}}}' |
         CLAUDE_PULSE_DENSITY="$density" "$PULSE" 2>/dev/null)
@@ -161,6 +164,98 @@ assert_contains "$out_fable_utilization" "Fable: 37%" "Fable quota accepts fract
 
 out_no_fable=$(run_pulse '{"rate_limits":{"five_hour":{"used_percentage":12},"seven_day":{"used_percentage":34}}}')
 assert_not_contains "$out_no_fable" "Fable:" "Fable quota hidden when Anthropic does not advertise one"
+
+# --- Claude Code 2.1.207 payload shape ---
+echo ""
+echo "Testing Claude Code 2.1.207 payload shape..."
+
+# A faithful replica of a real 2.1.207 statusline payload: rate_limits carries
+# ONLY five_hour and seven_day. The builder in 2.1.207 drops the internal
+# seven_day_overage_included (Fable) bucket even when /usage shows a
+# "Current week (Fable)" row, so the Fable segment must stay hidden.
+payload_207='{"session_id":"diag-session-abc123","transcript_path":"/nonexistent-transcript.jsonl","cwd":"/test","prompt_id":"diag-prompt-xyz","effort":{"level":"medium"},"model":{"id":"claude-fable-5","display_name":"Fable 5"},"workspace":{"current_dir":"/test","project_dir":"/test","added_dirs":[]},"version":"2.1.207","output_style":{"name":"default"},"cost":{"total_cost_usd":7.99,"total_duration_ms":1000,"total_api_duration_ms":500,"total_lines_added":1,"total_lines_removed":1},"context_window":{"total_input_tokens":581756,"total_output_tokens":838,"context_window_size":1000000,"current_usage":{"input_tokens":2,"output_tokens":838,"cache_creation_input_tokens":306,"cache_read_input_tokens":581448},"used_percentage":58,"remaining_percentage":42},"exceeds_200k_tokens":true,"fast_mode":false,"thinking":{"enabled":true},"rate_limits":{"five_hour":{"used_percentage":32,"resets_at":1783964400},"seven_day":{"used_percentage":4,"resets_at":1784494800}}}'
+
+for density in minimal regular heavy taboola; do
+    out_207=$(echo "$payload_207" | CLAUDE_PULSE_DENSITY="$density" "$PULSE" 2>/dev/null)
+    assert_contains "$out_207" "5h:" "2.1.207 payload shows 5h limit in $density density"
+    assert_contains "$out_207" "7d:" "2.1.207 payload shows 7d limit in $density density"
+    assert_not_contains "$out_207" "Fable:" "2.1.207 payload hides Fable segment in $density density"
+done
+
+# --- Rate-limits diagnostic (CLAUDE_PULSE_DEBUG_RATE_LIMITS) ---
+echo ""
+echo "Testing rate-limits diagnostic..."
+
+diag_file="$TEST_TMPDIR/rl-diag.json"
+
+# Not written unless explicitly enabled
+echo "$payload_207" | CLAUDE_PULSE_DEBUG_RATE_LIMITS="" CLAUDE_PULSE_DEBUG_RATE_LIMITS_FILE="$diag_file" "$PULSE" >/dev/null 2>&1
+assert_equals "$([[ -e "$diag_file" ]] && echo present || echo absent)" "absent" "diagnostic not written when env var unset"
+
+# One-shot capture with the exact 2.1.207 payload
+echo "$payload_207" | CLAUDE_PULSE_DEBUG_RATE_LIMITS=1 CLAUDE_PULSE_DEBUG_RATE_LIMITS_FILE="$diag_file" "$PULSE" >/dev/null 2>&1
+assert_equals "$([[ -f "$diag_file" ]] && echo present || echo absent)" "present" "diagnostic file created when enabled"
+diag=$(cat "$diag_file" 2>/dev/null)
+assert_contains "$diag" '"captured_at"' "diagnostic records capture time"
+assert_contains "$diag" '"claude_code_version":"2.1.207"' "diagnostic records Claude Code version"
+assert_contains "$diag" '"model":"claude-fable-5"' "diagnostic records model id"
+assert_contains "$diag" '"five_hour"' "diagnostic records five_hour key"
+assert_contains "$diag" '"seven_day"' "diagnostic records seven_day key"
+
+# Privacy: key names only — no values, ids, paths, or costs may leak
+assert_not_contains "$diag" "diag-session-abc123" "diagnostic omits session id"
+assert_not_contains "$diag" "diag-prompt-xyz" "diagnostic omits prompt id"
+assert_not_contains "$diag" "nonexistent-transcript" "diagnostic omits transcript path"
+assert_not_contains "$diag" "used_percentage" "diagnostic omits rate-limit values"
+assert_not_contains "$diag" "resets_at" "diagnostic omits reset timestamps"
+assert_not_contains "$diag" "7.99" "diagnostic omits session cost"
+assert_not_contains "$diag" '"cwd"' "diagnostic omits cwd"
+
+# One-shot: a later render with a different payload must not overwrite it
+echo '{"cwd":"/test","version":"9.9.9","model":{"id":"claude-fable-5"},"context_window":{"total_input_tokens":1,"total_output_tokens":1,"context_window_size":200000},"rate_limits":{"seven_day_overage_included":{"used_percentage":96}}}' |
+    CLAUDE_PULSE_DEBUG_RATE_LIMITS=1 CLAUDE_PULSE_DEBUG_RATE_LIMITS_FILE="$diag_file" "$PULSE" >/dev/null 2>&1
+assert_equals "$(cat "$diag_file" 2>/dev/null)" "$diag" "diagnostic is one-shot (second render leaves it untouched)"
+
+# A payload that DOES carry a Fable bucket gets its key name captured
+diag_file2="$TEST_TMPDIR/rl-diag-fable.json"
+echo '{"cwd":"/test","version":"2.2.0","model":{"id":"claude-fable-5"},"context_window":{"total_input_tokens":1,"total_output_tokens":1,"context_window_size":200000},"rate_limits":{"five_hour":{"used_percentage":1},"seven_day":{"used_percentage":2},"seven_day_overage_included":{"used_percentage":96}}}' |
+    CLAUDE_PULSE_DEBUG_RATE_LIMITS=1 CLAUDE_PULSE_DEBUG_RATE_LIMITS_FILE="$diag_file2" "$PULSE" >/dev/null 2>&1
+assert_contains "$(cat "$diag_file2" 2>/dev/null)" '"seven_day_overage_included"' "diagnostic captures Fable bucket key when present"
+
+# Missing rate_limits object degrades to an empty key list, not a crash
+diag_file3="$TEST_TMPDIR/rl-diag-empty.json"
+echo '{"cwd":"/test","version":"2.1.207","model":{"id":"claude-opus-4-6"},"context_window":{"total_input_tokens":1,"total_output_tokens":1,"context_window_size":200000}}' |
+    CLAUDE_PULSE_DEBUG_RATE_LIMITS=1 CLAUDE_PULSE_DEBUG_RATE_LIMITS_FILE="$diag_file3" "$PULSE" >/dev/null 2>&1
+assert_contains "$(cat "$diag_file3" 2>/dev/null)" '"rate_limit_keys":[]' "diagnostic handles missing rate_limits object"
+
+# Non-object rate_limits also degrades to an empty key list (jq `keys` on a
+# string used to abort the write, silently skipping the capture)
+diag_file4="$TEST_TMPDIR/rl-diag-nonobj.json"
+echo '{"cwd":"/test","version":"2.1.207","model":{"id":"claude-opus-4-6"},"context_window":{"total_input_tokens":1,"total_output_tokens":1,"context_window_size":200000},"rate_limits":"unexpected"}' |
+    CLAUDE_PULSE_DEBUG_RATE_LIMITS=1 CLAUDE_PULSE_DEBUG_RATE_LIMITS_FILE="$diag_file4" "$PULSE" >/dev/null 2>&1
+assert_contains "$(cat "$diag_file4" 2>/dev/null)" '"rate_limit_keys":[]' "diagnostic handles non-object rate_limits"
+
+# --- Malformed rate_limits robustness ---
+echo ""
+echo "Testing malformed rate_limits robustness..."
+
+# Regression: a scalar bucket value used to make the fable_rate scan index a
+# number, aborting the ENTIRE jq extraction — model, cwd, and all rates
+# blanked, not just the Fable segment.
+out_scalar_sibling=$(run_pulse '{"rate_limits":{"five_hour":{"used_percentage":10},"weird_bucket":5}}')
+assert_contains "$out_scalar_sibling" "Opus 4.6" "scalar sibling bucket does not blank model detection"
+assert_contains "$out_scalar_sibling" "5h:10%" "scalar sibling bucket does not blank 5h rate"
+
+# A scalar Fable bucket is a supported shape (percentage() handles numbers)
+out_scalar_fable=$(run_pulse '{"rate_limits":{"seven_day_overage_included":96}}')
+assert_contains "$out_scalar_fable" "Opus 4.6" "scalar Fable bucket does not blank model detection"
+assert_contains "$out_scalar_fable" "Fable:" "scalar Fable bucket renders the Fable segment"
+assert_contains "$out_scalar_fable" "96%" "scalar Fable bucket renders its percentage"
+
+# rate_limits as a non-object degrades to no rate segments, not a blank line
+out_rl_nonobj=$(run_pulse '{"rate_limits":"unexpected-string"}')
+assert_contains "$out_rl_nonobj" "Opus 4.6" "non-object rate_limits does not blank the statusline"
+assert_not_contains "$out_rl_nonobj" "5h:" "non-object rate_limits shows no rate segments"
 
 # --- Progress bar tests ---
 echo ""
