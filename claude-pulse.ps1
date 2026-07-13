@@ -268,9 +268,15 @@ $model_short = $model_name -replace '^Opus ', 'Op' -replace '^Sonnet ', 'Son' -r
 # Rate limits / cost / effort (Pro/Max + recent Claude Code only; null when absent)
 $rate_5h = Convert-ToPulseString (Get-NestedValue $data @('rate_limits', 'five_hour', 'used_percentage'))
 $rate_7d = Convert-ToPulseString (Get-NestedValue $data @('rate_limits', 'seven_day', 'used_percentage'))
-# Anthropic currently exposes Fable as seven_day_overage_included. Prefer
-# semantic aliases/metadata so a future rename keeps working, and hide it when
-# no separate Fable quota is advertised.
+# Fable weekly quota. Claude Code 2.1.207 does NOT emit it in the statusline
+# payload: its payload builder copies only five_hour and seven_day, even though
+# /usage shows "Current week (Fable)" (fetched separately from the OAuth usage
+# endpoint) and the internal header-derived bucket is named
+# seven_day_overage_included. All lookups below are therefore future-proofing —
+# semantic keys first, then Fable-scoped metadata, then the internal bucket
+# name — so the segment lights up unchanged the moment a newer Claude Code
+# starts emitting any of them. Absent -> hidden. Set
+# CLAUDE_PULSE_DEBUG_RATE_LIMITS=1 to capture which keys your Claude Code sends.
 $fableRateNode = Get-NestedValue $data @('rate_limits', 'seven_day_fable')
 if ($null -eq $fableRateNode) { $fableRateNode = Get-NestedValue $data @('rate_limits', 'fable') }
 if ($null -eq $fableRateNode -and $null -ne $data.rate_limits) {
@@ -294,6 +300,36 @@ if (-not $rate_fable) {
 }
 $cost_usd = Convert-ToPulseString (Get-NestedValue $data @('cost', 'total_cost_usd'))
 $effort = Convert-ToPulseString (Get-NestedValue $data @('effort', 'level'))
+
+# One-shot rate-limits diagnostic (CLAUDE_PULSE_DEBUG_RATE_LIMITS=1). Mirrors
+# the bash script: only capture time, Claude Code version, model id, and
+# rate_limits key NAMES are written — never usage values, session ids, paths,
+# or costs. Written once; delete the file to capture again.
+if ($env:CLAUDE_PULSE_DEBUG_RATE_LIMITS -eq '1') {
+    $rlDebugFile = if ($env:CLAUDE_PULSE_DEBUG_RATE_LIMITS_FILE) {
+        $env:CLAUDE_PULSE_DEBUG_RATE_LIMITS_FILE
+    } else {
+        Join-Path $HOME ".cache/claude-pulse/rate-limits-debug.json"
+    }
+    if (-not (Test-Path $rlDebugFile)) {
+        try {
+            $rlDebugDir = Split-Path $rlDebugFile -Parent
+            if ($rlDebugDir -and -not (Test-Path $rlDebugDir)) {
+                New-Item -ItemType Directory -Path $rlDebugDir -Force | Out-Null
+            }
+            $rlKeys = @()
+            if ($null -ne $data.rate_limits) {
+                $rlKeys = @($data.rate_limits.PSObject.Properties | ForEach-Object { $_.Name })
+            }
+            [ordered]@{
+                captured_at         = [DateTime]::UtcNow.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'")
+                claude_code_version = if ($data.version) { [string]$data.version } else { $null }
+                model               = if ($data.model -and $data.model.id) { [string]$data.model.id } else { $null }
+                rate_limit_keys     = $rlKeys
+            } | ConvertTo-Json -Compress | Set-Content -Path $rlDebugFile -Encoding UTF8
+        } catch {}
+    }
+}
 
 $context_limit = 200000
 

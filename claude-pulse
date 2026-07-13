@@ -25,8 +25,16 @@ SEP="${C_DIM}│${C_RESET}"
 # Extract values from JSON (single jq call, Unit Separator delimiter)
 IFS=$'\x1f' read -r cwd transcript_path session_id model_id rate_5h rate_7d rate_fable session_name cost_usd used_pct display_name effort < <(
     echo "$input" | jq -j '
-    # Prefer semantically named/scoped fields so this survives Anthropic renaming
-    # the quota. seven_day_overage_included is the current (2.1.207) legacy key.
+    # Fable weekly quota. Claude Code 2.1.207 does NOT emit it in the statusline
+    # payload: its payload builder copies only five_hour and seven_day, even
+    # though /usage shows "Current week (Fable)" (fetched separately from the
+    # OAuth usage endpoint) and the internal header-derived bucket is named
+    # seven_day_overage_included. All patterns below are therefore
+    # future-proofing — semantic keys first, then Fable-scoped metadata, then
+    # the internal bucket name — so the segment lights up unchanged the moment
+    # a newer Claude Code starts emitting any of them. Absent → hidden.
+    # Set CLAUDE_PULSE_DEBUG_RATE_LIMITS=1 to capture which keys your Claude
+    # Code actually sends.
     def percentage:
         if type == "number" then .
         elif type == "object" then
@@ -59,6 +67,29 @@ IFS=$'\x1f' read -r cwd transcript_path session_id model_id rate_5h rate_7d rate
         (.effort.level // "")
     ] | join("\u001f")' 2>/dev/null
 )
+
+# One-shot rate-limits diagnostic (CLAUDE_PULSE_DEBUG_RATE_LIMITS=1).
+# Claude Code 2.1.207 shows Fable usage in /usage but omits it from the
+# statusline payload; this records WHICH rate_limits keys your Claude Code
+# actually sends, so payload changes in future versions are easy to verify.
+# Privacy-safe by construction: only capture time, Claude Code version, model
+# id, and rate_limits key NAMES are written — never usage values, session ids,
+# paths, or costs. Written once; delete the file to capture again.
+if [[ "$CLAUDE_PULSE_DEBUG_RATE_LIMITS" == "1" ]]; then
+    _rl_debug_file="${CLAUDE_PULSE_DEBUG_RATE_LIMITS_FILE:-$HOME/.cache/claude-pulse/rate-limits-debug.json}"
+    if [[ ! -e "$_rl_debug_file" ]]; then
+        mkdir -p "$(dirname "$_rl_debug_file")" 2>/dev/null
+        (
+            umask 077
+            echo "$input" | jq -c '{
+                captured_at: (now | todate),
+                claude_code_version: (.version // null),
+                model: (.model.id // null),
+                rate_limit_keys: ((.rate_limits // {}) | keys)
+            }' > "$_rl_debug_file" 2>/dev/null
+        ) || rm -f "$_rl_debug_file" 2>/dev/null
+    fi
+fi
 
 # Density tier: minimal / regular / heavy
 # Override with CLAUDE_PULSE_DENSITY env var, otherwise auto-detect from terminal width
