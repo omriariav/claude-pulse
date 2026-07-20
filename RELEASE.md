@@ -1,5 +1,33 @@
 # Release Notes
 
+## v3.4.2 - Fable payload truth + amq identity liveness
+
+**Released:** July 20, 2026
+
+### Bug Fixes
+
+- **amq identity no longer resolves a dead agent's launch record (#48)** — tmux recycles pane ids after panes close, so a plain (non-amq) session that inherited a recycled pane id inside a former squad tree could display a stale agent's `amq:<profile>/<session>@<handle>`. The tmux-pane-id match (taboola mode) now requires the launch record's recorded `agent_pid` to still be alive (`kill -0`, a signal-free existence probe); a dead pid means the pane id was recycled, so the record is skipped and identity degrades honestly to `amq:?`/`amq:n/a` instead of inventing one. Records from older amq without `agent_pid` keep prior behavior.
+- **Corrected a wrong assumption from v3.4.0** — Claude Code does *not* include the Fable quota in statusline payloads (verified against the 2.1.207 **and** 2.1.215 binaries). The statusline serializer spreads only `five_hour` and `seven_day`; the Fable/overage buckets (`seven_day_overage_included` = "Fable 5 limit", `overage`) *are* parsed from response headers into Claude Code's in-memory cache but are dropped by the serializer, and the richer `/usage` figures come from a separate OAuth fetch rendered only in the dialog. There is no credential-free local source, and switching to the Fable model does not change this. Comments/docs were fixed; the detection ladder is retained as future-proofing so the segment lights up automatically if a Claude Code release ever spreads it.
+- **A malformed `rate_limits` entry no longer blanks the whole statusline** — a scalar bucket value (e.g. `"seven_day_overage_included": 96`) used to abort the entire jq extraction, wiping model, directory, and all rate segments. Every `rate_limits` access is now guarded; scalar buckets render via the existing percentage handling.
+
+### Improvements
+
+- **amq label dedup (#49)** — when the resolved profile equals the session, the label collapses `amq:<x>/<x>@<handle>` to `amq:<x>@<handle>` instead of repeating the name.
+
+### Features
+
+- **`CLAUDE_PULSE_DEBUG_RATE_LIMITS=1`** — one-shot, privacy-safe diagnostic of which `rate_limits` keys your Claude Code actually sends, written to `~/.cache/claude-pulse/rate-limits-debug.json` (capture time, Claude Code version, model id, key names only — never values, session ids, paths, or costs). Delete the file to re-capture; `CLAUDE_PULSE_DEBUG_RATE_LIMITS_FILE` overrides the path.
+- **`CLAUDE_PULSE_CACHE_DIR`** — overrides the cache directory (`~/.cache/claude-pulse`), used by the test suite to sandbox all cache reads/writes.
+
+### PowerShell parity
+
+- Diagnostic writes BOM-less UTF-8 (Windows PowerShell 5.1's `Set-Content -Encoding UTF8` prepends a BOM strict JSON parsers reject), uses invariant-culture timestamps (non-Gregorian calendars like ar-SA produced invalid `captured_at`), sorts key names to match jq `keys`, guards against non-object `rate_limits`, and removes partial files on failure so the one-shot capture can retry.
+
+### Tests
+
+- Suite is fully hermetic: the sandboxed cache means a leftover update badge or debug env var in the developer's shell can no longer fail taboola/OTA assertions or touch real cache files.
+- Added assertions for the amq liveness guard (dead vs. live `agent_pid`) and the profile==session dedup, plus the exact Claude Code 2.1.207 payload replica across all densities, diagnostic one-shot + privacy constraints, and scalar/non-object `rate_limits` robustness.
+
 ## v3.4.0 - Fable usage across all views
 
 **Released:** July 13, 2026

@@ -151,6 +151,32 @@ EOF
     assert_contains "$out" "amq:codex-v2-11-0/v2-11-0@developer" "taboola: resolves profile via tmux pane id match"
     assert_not_contains "$out" "v1-0-0-reshape" "taboola: pane-id match avoids stale workstream"
 
+    # Liveness guard (issue #48): tmux recycles pane ids, so a launch record whose
+    # pane id equals $TMUX_PANE but whose recorded agent_pid is DEAD belongs to a
+    # gone agent — it must NOT resolve as the current pane's identity.
+    lproj="$TEST_TMPDIR/squad-livecheck"
+    lagent="$lproj/.agent-mail/ses1/agents/dev/extensions/$LAYER"
+    mkdir -p "$lproj/.amq-squad" "$lagent"
+    echo '{"schema":1,"workstream":"ses1","members":[{"role":"dev","handle":"dev","session":"ses1"}]}' \
+        > "$lproj/.amq-squad/team.json"
+    # pid 2147483646: above any real pid, guaranteed not running → kill -0 fails.
+    echo '{"team_profile":"named","session":"ses1","handle":"ghostagent","agent_pid":2147483646,"tmux":{"pane_id":"%deadpane"}}' \
+        > "$lagent/launch.json"
+    ljson=$(jq -n --arg cwd "$lproj" '{cwd:$cwd,model:{id:"claude-opus-4-8"},context_window:{total_input_tokens:120000,total_output_tokens:5000,context_window_size:200000}}')
+    out=$(echo "$ljson" | env -u RED_ALERT_CITIES -u RED_ALERT_MODE -u NO_COLOR \
+        -u AM_ROOT -u AM_BASE_ROOT -u AM_ME TMUX_PANE="%deadpane" \
+        CLAUDE_PULSE_DENSITY=taboola "$PULSE" 2>/dev/null | strip)
+    assert_not_contains "$out" "ghostagent" "taboola: dead agent_pid rejects recycled-pane match"
+
+    # Same record but with a LIVE agent_pid ($$ = the test runner, alive now) →
+    # the pane match is trusted and the identity resolves.
+    echo '{"team_profile":"named","session":"ses1","handle":"livedev","agent_pid":'"$$"',"tmux":{"pane_id":"%livepane"}}' \
+        > "$lagent/launch.json"
+    out=$(echo "$ljson" | env -u RED_ALERT_CITIES -u RED_ALERT_MODE -u NO_COLOR \
+        -u AM_ROOT -u AM_BASE_ROOT -u AM_ME TMUX_PANE="%livepane" \
+        CLAUDE_PULSE_DENSITY=taboola "$PULSE" 2>/dev/null | strip)
+    assert_contains "$out" "@livedev" "taboola: live agent_pid keeps recycled-pane match"
+
     # Ambiguous: two named profiles claim the same session and identity is
     # otherwise unproven → explicit degraded marker, never a silent pick.
     echo '{"schema":3,"members":[{"handle":"x","session":"v2-11-0"}]}' \
@@ -173,6 +199,21 @@ EOF
         AM_ROOT="$dproj/.agent-mail/main" AM_BASE_ROOT="$dproj/.agent-mail" AM_ME=cto \
         CLAUDE_PULSE_DENSITY=taboola "$PULSE" 2>/dev/null | strip)
     assert_contains "$out" "amq:default/main@cto" "taboola: proven default profile shows default/<session>"
+
+    # Dedup: when the resolved profile equals the session, don't repeat it —
+    # amq:<x>/<x>@handle collapses to amq:<x>@handle.
+    sproj="$TEST_TMPDIR/squad-same"
+    mkdir -p "$sproj/.amq-squad" "$sproj/.agent-mail/dup/agents/dev/extensions/$LAYER"
+    echo '{"schema":1,"workstream":"dup","members":[{"role":"dev","handle":"dev","session":"dup"}]}' \
+        > "$sproj/.amq-squad/team.json"
+    echo '{"team_profile":"dup","session":"dup","handle":"dev","root":"'"$sproj"'/.agent-mail/dup","tmux":{"pane_id":"%9101"}}' \
+        > "$sproj/.agent-mail/dup/agents/dev/extensions/$LAYER/launch.json"
+    sjson=$(jq -n --arg cwd "$sproj" '{cwd:$cwd,model:{id:"claude-opus-4-8"},context_window:{total_input_tokens:120000,total_output_tokens:5000,context_window_size:200000}}')
+    out=$(echo "$sjson" | env -u RED_ALERT_CITIES -u RED_ALERT_MODE -u NO_COLOR \
+        AM_ROOT="$sproj/.agent-mail/dup" AM_BASE_ROOT="$sproj/.agent-mail" AM_ME=dev \
+        CLAUDE_PULSE_DENSITY=taboola "$PULSE" 2>/dev/null | strip)
+    assert_contains "$out" "amq:dup@dev" "taboola: profile==session collapses to single label"
+    assert_not_contains "$out" "amq:dup/dup" "taboola: profile==session not repeated"
 
     # tmux pane match must check .tmux.pane_id specifically, not just any field
     # equal to $TMUX_PANE (grep is only a prefilter). Here a NON-pane field

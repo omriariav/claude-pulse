@@ -1,5 +1,5 @@
 #!/bin/bash
-# claude-pulse v3.4.0: Real-time token usage for Claude Code status line
+# claude-pulse v3.4.2: Real-time token usage for Claude Code status line
 # Uses billing API (transcript) for accurate FULL context usage
 # Falls back to native context_window when transcript unavailable
 # Displays current model name and AI-generated conversation names
@@ -665,9 +665,11 @@ _alert_icon_label() {
 # amq-squad layer id used in launch.json extension paths (see record.go).
 _AMQ_SQUAD_LAYER="io.github.omriariav.amq-squad"
 
-# Read team_profile/session/handle out of one agent dir's launch.json.
+# Read team_profile/session/handle/agent_pid out of one agent dir's launch.json.
 # Tries the extensions-layer path first, then the bare path. On success sets
-# _lr_profile / _lr_session / _lr_handle and returns 0; returns 1 otherwise.
+# _lr_profile / _lr_session / _lr_handle / _lr_pid and returns 0; else returns 1.
+# _lr_pid is the recorded launching process (empty on older amq) — used by the
+# liveness guard to reject records whose tmux pane id has since been recycled.
 _amq_read_launch_record() {
     local dir="$1" f=""
     if   [[ -f "$dir/extensions/$_AMQ_SQUAD_LAYER/launch.json" ]]; then f="$dir/extensions/$_AMQ_SQUAD_LAYER/launch.json"
@@ -677,8 +679,8 @@ _amq_read_launch_record() {
     # Join on the unit separator (0x1F), NOT a tab: tab is IFS-whitespace, so a
     # leading empty field (e.g. team_profile=null for the default profile) would
     # be collapsed by `read` and shift every field left.
-    parsed=$(jq -r '[(.team_profile // ""),(.session // ""),(.handle // "")] | join("\u001f")' "$f" 2>/dev/null) || return 1
-    IFS=$'\037' read -r _lr_profile _lr_session _lr_handle <<<"$parsed"
+    parsed=$(jq -r '[(.team_profile // ""),(.session // ""),(.handle // ""),(.agent_pid // "")] | join("\u001f")' "$f" 2>/dev/null) || return 1
+    IFS=$'\037' read -r _lr_profile _lr_session _lr_handle _lr_pid <<<"$parsed"
     [[ -n "$_lr_profile$_lr_session$_lr_handle" ]]
 }
 
@@ -722,7 +724,7 @@ _amq_profile_for_session() {
 #      only when unambiguous (otherwise the degraded marker is shown).
 _resolve_amq_identity() {
     _amq_profile="" _amq_sess="" _amq_handle="" _amq_ambiguous=""
-    local _lr_profile _lr_session _lr_handle
+    local _lr_profile _lr_session _lr_handle _lr_pid
 
     # Locate the AMQ base root (.agent-mail) and the squad config dir, walking
     # up from cwd. AM_BASE_ROOT (when exported into the pane) wins for the base.
@@ -758,6 +760,8 @@ _resolve_amq_identity() {
             local pane
             pane=$(_amq_launch_pane "$adir")
             if [[ "$pane" == "$TMUX_PANE" ]]; then
+                # Reject a recycled-pane-id match to a dead agent's record.
+                _amq_launch_alive "$_lr_pid" || continue
                 _amq_profile="${_lr_profile:-default}"; _amq_sess="$_lr_session"; _amq_handle="$_lr_handle"
                 [[ -z "$_amq_sess" ]] && _amq_sess=$(basename "$am_root")
                 return 0
@@ -779,6 +783,8 @@ _resolve_amq_identity() {
             # grep is only a cheap prefilter — confirm the match is the pane id
             # field, not some other field that happens to equal $TMUX_PANE.
             [[ "$(_amq_launch_pane "$adir")" == "$TMUX_PANE" ]] || continue
+            # Reject a recycled-pane-id match to a dead agent's record.
+            _amq_launch_alive "$_lr_pid" || continue
             _amq_profile="${_lr_profile:-default}"; _amq_sess="$_lr_session"; _amq_handle="$_lr_handle"
             return 0
         done < <(grep -rlF "\"$TMUX_PANE\"" "$base_root" --include=launch.json 2>/dev/null)
@@ -833,6 +839,25 @@ _amq_launch_pane() {
     elif [[ -f "$dir/launch.json" ]]; then f="$dir/launch.json"
     else return 1; fi
     jq -r '.tmux.pane_id // ""' "$f" 2>/dev/null
+}
+
+# Liveness guard for a tmux-pane-id match. tmux recycles pane ids after panes
+# close, so a launch record whose recorded pane id equals $TMUX_PANE may belong
+# to a long-dead agent whose pane id this session merely inherited. Reject the
+# match unless the recorded launching process is still alive.
+#   pid alive     -> 0 (trust the pane match)
+#   pid gone      -> 1 (stale record; pane id was recycled)
+#   no pid        -> 0 (older amq didn't record one; can't disprove, keep prior
+#                       behavior rather than regress identity resolution)
+# `kill -0` sends NO signal — it is a pure existence probe and never touches the
+# process. Residual PID-reuse edge (dead pid reassigned to an unrelated live
+# process AND its pane id also recycled) is left unguarded here — it needs both
+# collisions at once; see the started_at cross-check noted in issue #48.
+_amq_launch_alive() {
+    local pid="$1"
+    [[ -z "$pid" ]] && return 0
+    [[ "$pid" =~ ^[0-9]+$ ]] || return 0
+    kill -0 "$pid" 2>/dev/null
 }
 
 # Red Alert: read-only — daemon is managed by launchd (macOS) or systemd (Linux)
@@ -1210,7 +1235,8 @@ case "$density" in
         fi
 
         # amq-squad identity — resolved for the CURRENT pane, not the first
-        # profile found on disk. Rendered as amq:<profile>/<session>@<handle>.
+        # profile found on disk. Rendered as amq:<profile>/<session>@<handle>
+        # (profile omitted when it equals the session — no redundant repeat).
         # See _resolve_amq_identity for the precedence ladder.
         _tb_amq=""
         if command -v amq &>/dev/null; then
@@ -1222,7 +1248,13 @@ case "$density" in
             else
                 _amq_label=""
                 if [[ -n "$_amq_profile" && -n "$_amq_sess" ]]; then
-                    _amq_label="amq:${_amq_profile}/${_amq_sess}"
+                    # Dedup when profile == session (common when a session isn't
+                    # scoped to a distinct named profile) — don't print it twice.
+                    if [[ "$_amq_profile" == "$_amq_sess" ]]; then
+                        _amq_label="amq:${_amq_sess}"
+                    else
+                        _amq_label="amq:${_amq_profile}/${_amq_sess}"
+                    fi
                 elif [[ -n "$_amq_sess" ]]; then
                     _amq_label="amq:${_amq_sess}"
                 elif [[ -n "$_amq_profile" ]]; then
