@@ -68,7 +68,15 @@ function Test-AmqLaunchAlive {
     param([string]$RecPid)
     if (-not $RecPid) { return $true }
     if ($RecPid -notmatch '^[0-9]+$') { return $true }
-    return [bool](Get-Process -Id ([int]$RecPid) -ErrorAction SilentlyContinue)
+    # A statusline must never abort, so guard the Int32 cast: a malformed pid
+    # string that overflows Int32 (no legitimate amq install produces one) would
+    # otherwise throw a terminating error. Treat it as not-alive so the record is
+    # skipped — matches bash `kill -0` returning non-zero on an invalid pid.
+    try {
+        return [bool](Get-Process -Id ([int]$RecPid) -ErrorAction SilentlyContinue)
+    } catch {
+        return $false
+    }
 }
 
 # Find which profile config under $SquadDir owns $Want (default team.json ->
