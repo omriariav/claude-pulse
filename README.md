@@ -20,7 +20,7 @@
 - ✅ **Git branch + PR** - Shows current branch and open PR number
 - ✅ **Git diff stats** - Files changed, insertions (+green), deletions (-red) with cyan file count
 - ✅ **Session cost** - Shows cumulative API cost in heavy mode (optional, for pay-per-use plans)
-- ✅ **Rate limits** - 5h/7d and model-scoped Fable usage visible when available, color-coded. Note: Claude Code ≤2.1.207 does not include the Fable quota in the statusline payload (even though `/usage` shows it), so that segment stays hidden until a Claude Code release exposes it — no update needed on our side
+- ✅ **Rate limits** - 5h/7d and model-scoped Fable usage visible when available, color-coded. Note: Claude Code ≤2.1.215 does not include the Fable quota in the statusline payload (even though `/usage` shows it), so that segment stays hidden until a Claude Code release exposes it — no update needed on our side
 - ✅ **Color-coded warnings** - Green → Yellow → Red as context usage increases (ANSI RGB)
 - ✅ **Interactive setup** - `/setup-statusline` walks you through density, cost, and Red Alert config
 - ✅ **Lightweight** - Pure bash/PowerShell script with minimal dependencies
