@@ -1,6 +1,6 @@
 # claude-pulse
 
-> Real-time token usage monitoring for Claude Code status line | **v3.4.0**
+> Real-time token usage monitoring for Claude Code status line | **v3.4.2**
 
 **claude-pulse** displays your current Claude Code token usage directly in your status line, helping you stay aware of context consumption without running `/context` manually.
 
@@ -303,6 +303,7 @@ You can! But claude-pulse offers:
 
 | Version | Highlights |
 |---------|-----------|
+| **v3.4.2** | `taboola` amq identity now requires the launch record's `agent_pid` to be alive before trusting a tmux-pane-id match — a recycled pane id from a dead agent no longer shows a stale `amq:<profile>/<session>@<handle>` (degrades honestly to `amq:?`); label collapses `amq:<x>/<x>` to `amq:<x>` when profile equals session. Also: re-verified against Claude Code 2.1.207 **and** 2.1.215 that statusline payloads carry only 5h/7d (the Fable/overage buckets are parsed from headers but dropped by the serializer, so no model — including Fable — exposes them) — comments/docs corrected, Fable detection kept as future-proofing; one-shot privacy-safe `CLAUDE_PULSE_DEBUG_RATE_LIMITS=1` diagnostic; hardened jq parsing (a scalar or non-object `rate_limits` entry no longer blanks the whole statusline); PowerShell diagnostic parity (BOM-less UTF-8, invariant-culture timestamps, sorted keys, partial-write cleanup); hermetic test suite via `CLAUDE_PULSE_CACHE_DIR` sandbox |
 | **v3.4.0** | Optional, color-coded Fable weekly quota usage across minimal, regular, heavy, and `taboola` views, with Bash/PowerShell parity; capability-driven detection supports semantic keys, model-scope metadata, percentage/utilization payloads, and the current legacy fallback while hiding the segment when no separate quota exists |
 | **v3.3.1** | `taboola` mode now resolves the amq-squad identity of the **current pane** (`amq:<profile>/<session>@<handle>`) instead of the first/default profile on disk — precedence ladder (env launch-record → tmux pane-id → env/disk session → discovery), explicit `amq:?` marker when identity can't be proven, nested `AM_ROOT` layout support, bash/PowerShell parity |
 | **v3.3.0** | New opt-in `taboola` density — slick single-line, theme-adaptive 16-color ANSI, with amq-squad team/session, reasoning effort, 5h/7d limits, API cost & `NO_COLOR`; fix: statusline now always exits 0 (a non-zero exit made Claude Code render nothing) |

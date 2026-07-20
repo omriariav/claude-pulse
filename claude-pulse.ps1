@@ -1,4 +1,4 @@
-# claude-pulse.ps1 v3.4.0: Real-time token usage for Claude Code status line (Windows)
+# claude-pulse.ps1 v3.4.2: Real-time token usage for Claude Code status line (Windows)
 # Uses billing API (transcript) for accurate FULL context usage
 # Falls back to native context_window when transcript unavailable
 # Displays current model name and AI-generated conversation names
@@ -33,9 +33,10 @@ function Convert-ToPulseString {
 # amq-squad layer id used in launch.json extension paths (see record.go).
 $script:AmqSquadLayer = "io.github.omriariav.amq-squad"
 
-# Read team_profile/session/handle/pane out of one agent dir's launch.json.
-# Tries the extensions-layer path first, then the bare path. Returns a hashtable
-# with Profile/Session/Handle/Pane on success, or $null.
+# Read team_profile/session/handle/pane/agent_pid out of one agent dir's
+# launch.json. Tries the extensions-layer path first, then the bare path.
+# Returns a hashtable with Profile/Session/Handle/Pane/Pid on success, or $null.
+# Pid (empty on older amq) feeds the liveness guard on pane-id matches.
 function Read-AmqLaunchRecord {
     param([string]$Dir)
     $f = $null
@@ -50,11 +51,32 @@ function Read-AmqLaunchRecord {
         Session = Convert-ToPulseString (Get-NestedValue $j @('session'))
         Handle  = Convert-ToPulseString (Get-NestedValue $j @('handle'))
         Pane    = Convert-ToPulseString (Get-NestedValue $j @('tmux', 'pane_id'))
+        Pid     = Convert-ToPulseString (Get-NestedValue $j @('agent_pid'))
     }
     # Reject identity-less records (matches bash _amq_read_launch_record), so a
     # stray file never synthesizes a bogus default/<basename> identity.
     if (-not ($rec.Profile -or $rec.Session -or $rec.Handle)) { return $null }
     return $rec
+}
+
+# Liveness guard for a tmux-pane-id match (mirrors bash _amq_launch_alive).
+# tmux recycles pane ids after panes close, so a launch record whose pane id
+# equals $TMUX_PANE may belong to a long-dead agent whose pane id this session
+# merely inherited. Return $true only if the recorded process is still alive;
+# a missing pid can't be disproven, so keep prior behavior ($true).
+function Test-AmqLaunchAlive {
+    param([string]$RecPid)
+    if (-not $RecPid) { return $true }
+    if ($RecPid -notmatch '^[0-9]+$') { return $true }
+    # A statusline must never abort, so guard the Int32 cast: a malformed pid
+    # string that overflows Int32 (no legitimate amq install produces one) would
+    # otherwise throw a terminating error. Treat it as not-alive so the record is
+    # skipped — matches bash `kill -0` returning non-zero on an invalid pid.
+    try {
+        return [bool](Get-Process -Id ([int]$RecPid) -ErrorAction SilentlyContinue)
+    } catch {
+        return $false
+    }
 }
 
 # Find which profile config under $SquadDir owns $Want (default team.json ->
@@ -147,7 +169,7 @@ function Resolve-AmqIdentity {
         if (Test-Path $agentsDir -PathType Container) {
             foreach ($adir in (Get-ChildItem -Path $agentsDir -Directory -ErrorAction SilentlyContinue)) {
                 $rec = Read-AmqLaunchRecord $adir.FullName
-                if ($rec -and $rec.Pane -eq $env:TMUX_PANE) {
+                if ($rec -and $rec.Pane -eq $env:TMUX_PANE -and (Test-AmqLaunchAlive $rec.Pid)) {
                     $res.Profile = if ($rec.Profile) { $rec.Profile } else { "default" }
                     $res.Session = if ($rec.Session) { $rec.Session } else { Split-Path -Leaf $amRoot }
                     $res.Handle  = $rec.Handle
@@ -168,7 +190,7 @@ function Resolve-AmqIdentity {
                 $adir = Split-Path -Parent (Split-Path -Parent $adir)  # strip extensions/<layer>
             }
             $rec = Read-AmqLaunchRecord $adir
-            if ($rec -and $rec.Pane -eq $env:TMUX_PANE) {
+            if ($rec -and $rec.Pane -eq $env:TMUX_PANE -and (Test-AmqLaunchAlive $rec.Pid)) {
                 $res.Profile = if ($rec.Profile) { $rec.Profile } else { "default" }
                 $res.Session = $rec.Session
                 $res.Handle  = $rec.Handle
@@ -818,9 +840,9 @@ if ($env:CLAUDE_PULSE_DENSITY -eq 'taboola') {
         }
     }
 
-    # amq-squad identity for the CURRENT pane (amq:<profile>/<session>@<handle>),
-    # resolved via the precedence ladder in Resolve-AmqIdentity — never the first
-    # profile found on disk.
+    # amq-squad identity for the CURRENT pane (amq:<profile>/<session>@<handle>,
+    # profile omitted when it equals the session), resolved via the precedence
+    # ladder in Resolve-AmqIdentity — never the first profile found on disk.
     $segAmq = ""
     if (Get-Command amq -ErrorAction SilentlyContinue) {
         $amqId = Resolve-AmqIdentity $cwd
@@ -829,7 +851,11 @@ if ($env:CLAUDE_PULSE_DENSITY -eq 'taboola') {
             $segAmq = "${tYel}amq:?$tRst"
         } else {
             $amqTxt = ""
-            if ($amqId.Profile -and $amqId.Session) { $amqTxt = "amq:$($amqId.Profile)/$($amqId.Session)" }
+            if ($amqId.Profile -and $amqId.Session) {
+                # Dedup when profile == session — don't print it twice.
+                if ($amqId.Profile -eq $amqId.Session) { $amqTxt = "amq:$($amqId.Session)" }
+                else { $amqTxt = "amq:$($amqId.Profile)/$($amqId.Session)" }
+            }
             elseif ($amqId.Session) { $amqTxt = "amq:$($amqId.Session)" }
             elseif ($amqId.Profile) { $amqTxt = "amq:$($amqId.Profile)" }
             if ($amqTxt) {
